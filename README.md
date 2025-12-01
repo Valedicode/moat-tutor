@@ -95,7 +95,7 @@ All data is loaded from a **controlled, historical dataset** for reproducibility
 3. **Backend setup (FastAPI + LangChain)**
    Navigate to the backend directory and install dependencies:
    ```bash
-   cd ../backend
+   cd backend
    pip install -r requirements.txt
    ```
 
