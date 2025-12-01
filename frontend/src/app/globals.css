@@ -1,12 +1,41 @@
 @import "tailwindcss";
 
-:root {
+:root[data-theme="dark"] {
   --background: #0f1115;
   --surface: #181b21;
+  --surface-secondary: #1a1d24;
   --accent: #00e0ff;
   --risk: #ff4d4d;
   --text-primary: #e1e3e6;
   --text-secondary: #898d96;
+  --text-tertiary: #666b74;
+  --text-quaternary: #515761;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --gradient-start: rgba(24, 27, 33, 0.6);
+  --gradient-mid: rgba(15, 17, 21, 0.8);
+  --gradient-end: rgba(15, 17, 21, 0.95);
+  --button-primary: #7c3aed;
+  --button-primary-hover: #9333ea;
+}
+
+:root[data-theme="light"] {
+  --background: #f8f9fa;
+  --surface: #ffffff;
+  --surface-secondary: #f1f3f5;
+  --accent: #0891b2;
+  --risk: #dc2626;
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --text-quaternary: #d1d5db;
+  --border: rgba(0, 0, 0, 0.1);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --gradient-start: rgba(248, 249, 250, 0.6);
+  --gradient-mid: rgba(241, 243, 245, 0.8);
+  --gradient-end: rgba(241, 243, 245, 0.95);
+  --button-primary: #7c3aed;
+  --button-primary-hover: #6d28d9;
 }
 
 @theme inline {
@@ -29,6 +58,10 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans), Inter, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+}
+
+input::placeholder {
+  color: var(--text-quaternary);
 }
 
 ::selection {
