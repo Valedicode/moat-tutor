@@ -19,12 +19,24 @@ export function ChatInput({
 }: ChatInputProps) {
   const containerClass =
     variant === "idle"
-      ? "mt-10 w-full max-w-2xl flex items-center gap-3 rounded-full border border-white/10 bg-[#181B21]/70 p-2 shadow-[0_25px_120px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
-      : "flex items-center gap-3 rounded-[24px] border border-white/10 bg-[#0F1115]/80 p-4";
+      ? "mt-10 w-full max-w-2xl flex items-center gap-3 rounded-full p-2 backdrop-blur-2xl"
+      : "flex items-center gap-3 rounded-[24px] p-4";
+
+  const containerStyle =
+    variant === "idle"
+      ? {
+          border: "1px solid var(--border)",
+          backgroundColor: "color-mix(in srgb, var(--surface) 70%, transparent)",
+        }
+      : {
+          border: "1px solid var(--border)",
+          backgroundColor: "color-mix(in srgb, var(--background) 80%, transparent)",
+        };
 
   return (
     <form
       className={containerClass}
+      style={containerStyle}
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
@@ -33,7 +45,19 @@ export function ChatInput({
       <button
         type="button"
         onClick={onToggleMic}
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-transparent text-[#898D96] transition hover:border-white/30 hover:text-[#E1E3E6]"
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border bg-transparent transition"
+        style={{
+          borderColor: "var(--border)",
+          color: "var(--text-secondary)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "color-mix(in srgb, var(--border) 300%, transparent)";
+          e.currentTarget.style.color = "var(--text-primary)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "var(--border)";
+          e.currentTarget.style.color = "var(--text-secondary)";
+        }}
         aria-label="Voice input (coming soon)"
         title="Voice input (coming soon)"
       >
@@ -43,11 +67,23 @@ export function ChatInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="flex-1 bg-transparent text-base text-[#E1E3E6] outline-none placeholder:text-[#515761]"
+        className="flex-1 bg-transparent text-base outline-none"
+        style={{
+          color: "var(--text-primary)",
+        }}
       />
       <button
         type="submit"
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#7C3AED] transition hover:bg-[#9333EA]"
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-white transition"
+        style={{
+          backgroundColor: "var(--button-primary)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--button-primary-hover)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--button-primary)";
+        }}
         aria-label="Send message"
       >
         <SendIcon />
