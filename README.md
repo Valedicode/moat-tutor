@@ -79,16 +79,32 @@ All data is loaded from a **controlled, historical dataset** for reproducibility
   - Node.js 18+ for the `Next.js` frontend.
   - Access to an LLM API or local model (e.g., OpenAI or an open-source model).
 
-- **Backend setup (FastAPI + LangChain)**
-  ```bash
-  git clone <this-repo-url>
-  cd moatexplain
-  pip install -r requirements.txt
-  ```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/Valedicode/moat-tutor.git
+   cd moat-tutor
+   ```
 
-- **Frontend setup (Next.js)**  
-  From the frontend directory (e.g., `web/`):
-  ```bash
-  pnpm install
-  pnpm dev
-  ```
+2. **Frontend setup (Next.js)**
+   Navigate to the frontend directory and install dependencies:
+   ```bash
+   cd frontend
+   pnpm install
+   ```
+
+3. **Backend setup (FastAPI + LangChain)**
+   Navigate to the backend directory and install dependencies:
+   ```bash
+   cd ../backend
+   pip install -r requirements.txt
+   ```
+
+4. **Run the application**
+   - Start the backend server (from the `backend/` directory):
+     ```bash
+     uvicorn main:app --reload
+     ```
+   - Start the frontend development server (from the `frontend/` directory):
+     ```bash
+     pnpm dev
+     ```
