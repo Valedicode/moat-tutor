@@ -1,5 +1,6 @@
 import { Message } from "@/types/chat";
 import { ChatInput, MessageBubble } from "@/components/chat";
+import { MoatDashboard } from "@/components/dashboard";
 
 type ActiveShellProps = {
   messages: Message[];
@@ -72,15 +73,8 @@ export function ActiveShell({
         </div>
       </section>
 
-      <section
-        className="flex flex-1 items-center justify-center rounded-[36px] border border-dashed text-center text-sm"
-        style={{
-          borderColor: "var(--border)",
-          backgroundColor: "var(--border-subtle)",
-          color: "var(--text-secondary)",
-        }}
-      >
-        The Moat Dashboard (70%) will be integrated in the next step.
+      <section className="flex flex-1">
+        <MoatDashboard />
       </section>
     </div>
   );
