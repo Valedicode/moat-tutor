@@ -20,13 +20,33 @@ export function ActiveShell({
 }: ActiveShellProps) {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:flex-row">
-      <section className="flex min-h-[75vh] basis-full flex-col rounded-[36px] border border-white/10 bg-[#181B21]/75 p-6 shadow-[0_30px_140px_rgba(0,0,0,0.55)] backdrop-blur-3xl transition-all duration-500 lg:basis-[32%]">
-        <div className="rounded-[28px] border border-white/10 bg-white/5 p-5">
-          <p className="text-xs uppercase tracking-[0.4em] text-[#898D96]">
+      <section
+        className="flex min-h-[75vh] basis-full flex-col rounded-[36px] border p-6 backdrop-blur-3xl transition-all duration-500 lg:basis-[32%]"
+        style={{
+          borderColor: "var(--border)",
+          backgroundColor: "color-mix(in srgb, var(--surface) 75%, transparent)",
+        }}
+      >
+        <div
+          className="rounded-[28px] border p-5"
+          style={{
+            borderColor: "var(--border)",
+            backgroundColor: "var(--border-subtle)",
+          }}
+        >
+          <p
+            className="text-xs uppercase tracking-[0.4em]"
+            style={{ color: "var(--text-secondary)" }}
+          >
             Conversation
           </p>
-          <h2 className="mt-3 text-2xl font-semibold">AI Research Chat</h2>
-          <p className="mt-1 text-sm text-[#898D96]">
+          <h2
+            className="mt-3 text-2xl font-semibold"
+            style={{ color: "var(--text-primary)" }}
+          >
+            AI Research Chat
+          </h2>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
             Your questions drive the moat analysis. Each answer triggers a new
             panel on the right.
           </p>
@@ -52,7 +72,14 @@ export function ActiveShell({
         </div>
       </section>
 
-      <section className="flex flex-1 items-center justify-center rounded-[36px] border border-dashed border-white/15 bg-white/5 text-center text-sm text-[#616773]">
+      <section
+        className="flex flex-1 items-center justify-center rounded-[36px] border border-dashed text-center text-sm"
+        style={{
+          borderColor: "var(--border)",
+          backgroundColor: "var(--border-subtle)",
+          color: "var(--text-secondary)",
+        }}
+      >
         The Moat Dashboard (70%) will be integrated in the next step.
       </section>
     </div>

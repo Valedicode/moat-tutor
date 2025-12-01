@@ -9,7 +9,7 @@ export function SendIcon() {
     >
       <path
         d="M7 11L12 6L17 11M12 18V7"
-        stroke="white"
+        stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
