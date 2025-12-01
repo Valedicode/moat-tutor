@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Message } from "@/types/chat";
 import { IdleHero } from "@/components/IdleHero";
 import { ActiveShell } from "@/components/ActiveShell";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { assistantNarratives } from "@/constants/chat";
 import { nowStamp } from "@/utils/date";
 
@@ -81,15 +82,19 @@ export default function Home() {
 
   const backgroundGrid = useMemo(
     () =>
-      "linear-gradient(135deg, rgba(24,27,33,0.6) 0%, rgba(15,17,21,0.8) 40%, rgba(15,17,21,0.95) 100%)",
+      "linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-mid) 40%, var(--gradient-end) 100%)",
     [],
   );
 
   return (
     <main
-      className="min-h-screen w-full px-4 py-10 text-[#E1E3E6] sm:px-10"
-      style={{ background: backgroundGrid }}
+      className="min-h-screen w-full px-4 py-10 sm:px-10"
+      style={{
+        background: backgroundGrid,
+        color: "var(--text-primary)",
+      }}
     >
+      <ThemeToggle />
       {!isActiveSession ? (
         <IdleHero
           inputValue={inputValue}
