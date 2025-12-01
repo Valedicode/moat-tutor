@@ -80,11 +80,15 @@ All data is loaded from a **controlled, historical dataset** for reproducibility
   - Access to an LLM API or local model (e.g., OpenAI or an open-source model).
 
 - **Backend setup (FastAPI + LangChain)**
+  ```bash
+  git clone <this-repo-url>
+  cd moatexplain
+  pip install -r requirements.txt
+  ```
 
-git clone <this-repo-url>
-cd moatexplain
-pip install -r requirements.txt- **Frontend setup (Next.js)**  
+- **Frontend setup (Next.js)**  
   From the frontend directory (e.g., `web/`):
-
-pnpm install
-pnpm dev
+  ```bash
+  pnpm install
+  pnpm dev
+  ```
