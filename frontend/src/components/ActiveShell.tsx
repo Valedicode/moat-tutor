@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Message } from "@/types/chat";
 import { ChatInput, MessageBubble } from "@/components/chat";
 import { MoatDashboard } from "@/components/dashboard";
@@ -19,13 +20,28 @@ export function ActiveShell({
   chatScrollRef,
   toggleListening,
 }: ActiveShellProps) {
+  const [showPanel, setShowPanel] = useState(false);
+
+  useEffect(() => {
+    // Show panel after first user message is sent
+    if (messages.length > 0) {
+      // Delay the panel opening slightly to create a staged animation
+      const timer = setTimeout(() => {
+        setShowPanel(true);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [messages.length]);
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:flex-row">
+    <div className="mx-auto flex w-full flex-col gap-6 lg:flex-row" style={{ maxWidth: showPanel ? "96rem" : "48rem", transition: "max-width 600ms cubic-bezier(0.4, 0, 0.2, 1)" }}>
       <section
-        className="flex min-h-[75vh] basis-full flex-col rounded-[36px] border p-6 backdrop-blur-3xl transition-all duration-500 lg:basis-[32%]"
+        className="flex min-h-[75vh] flex-col rounded-[36px] border p-6 backdrop-blur-3xl"
         style={{
           borderColor: "var(--border)",
           backgroundColor: "color-mix(in srgb, var(--surface) 75%, transparent)",
+          flexBasis: showPanel ? "32%" : "100%",
+          transition: "flex-basis 600ms cubic-bezier(0.4, 0, 0.2, 1)",
         }}
       >
         <div
@@ -73,8 +89,18 @@ export function ActiveShell({
         </div>
       </section>
 
-      <section className="flex flex-1">
-        <MoatDashboard />
+      <section 
+        className="flex overflow-hidden"
+        style={{
+          flexBasis: showPanel ? "calc(68% - 1.5rem)" : "0%",
+          transition: "flex-basis 600ms cubic-bezier(0.4, 0, 0.2, 1) 200ms",
+        }}
+      >
+        {showPanel && (
+          <div className="slide-in-panel w-full">
+            <MoatDashboard />
+          </div>
+        )}
       </section>
     </div>
   );
