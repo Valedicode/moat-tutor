@@ -5,6 +5,7 @@ import { Message } from "@/types/chat";
 import { IdleHero } from "@/components/IdleHero";
 import { ActiveShell } from "@/components/ActiveShell";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Logo } from "@/components/Logo";
 import { assistantNarratives } from "@/constants/chat";
 import { nowStamp } from "@/utils/date";
 
@@ -88,12 +89,16 @@ export default function Home() {
 
   return (
     <main
-      className="min-h-screen w-full px-4 py-10 sm:px-10"
+      className="relative min-h-screen w-full px-4 py-10 sm:px-10"
       style={{
         background: backgroundGrid,
         color: "var(--text-primary)",
       }}
     >
+      {/* Logo in top-left */}
+      <div className="absolute left-4 top-4 sm:left-10 sm:top-10">
+        <Logo variant="large" />
+      </div>
       <ThemeToggle />
       {!isActiveSession ? (
         <IdleHero
