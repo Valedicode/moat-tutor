@@ -1,22 +1,55 @@
-## Backend (FastAPI)
+## Backend (FastAPI + LangChain Tutoring Agent)
 
-### Setup
+MoatTutor is a **teaching financial agent** that explains stock behavior while actively tutoring users in financial concepts.
 
-From the repo root:
+### Quick Start
 
 ```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate  # on Windows
+# 1. Install dependencies
 pip install -r requirements.txt
-```
 
-### Run the API
+# 2. Create .env file with your OpenAI key
+echo "LLM_PROVIDER=openai" > .env
+echo "OPENAI_API_KEY=your_key_here" >> .env
 
-```bash
+# 3. Test the agent
+python interactive_tutorial.py
+
+# 4. Run the API server
 uvicorn main:app --reload
 ```
 
-The API will be available at `http://127.0.0.1:8000` with docs at `http://127.0.0.1:8000/docs`.
+**For detailed setup instructions**, see [`tutorial/SETUP.md`](tutorial/SETUP.md)
+
+### What's Built
+
+- **MoatTutor Agent** (`agent/moat_tutor.py`)
+  - Teaching-first system prompt with 9-section response structure
+  - MOAT framework education (5 characteristics)
+  - Adaptive learning based on user expertise
+  - Interactive features: comprehension checks, learning paths, concept definitions
+  - 3 mock tools: news, prices, moat characteristics
+  - Support for OpenAI and local LLMs
+
+- **FastAPI Integration** (`main.py`)
+  - `/chat` endpoint for natural language interaction
+  - CORS enabled for frontend
+
+- **Pedagogical Features** (see `tutorial/TUTORING_FEATURES.md`)
+  - Concept definitions for every term used
+  - 6 structured learning paths (Beginner, Analyst, Event-Chain, etc.)
+  - Comprehension checks after every response
+  - Active learning suggestions
+  - Data transparency and honest limitations
+
+### Test the API
+
+```bash
+curl -X POST "http://127.0.0.1:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Explain why AAPL stock moved from 2023-01-01 to 2023-02-28"}'
+```
+
+Or visit: `http://127.0.0.1:8000/docs`
 
 
