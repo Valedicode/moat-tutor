@@ -76,13 +76,13 @@ export function ChatInput({
         type="submit"
         className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-white transition"
         style={{
-          backgroundColor: "var(--button-primary)",
+          backgroundColor: "var(--accent)",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--button-primary-hover)";
+          e.currentTarget.style.backgroundColor = "color-mix(in srgb, var(--accent) 80%, black)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--button-primary)";
+          e.currentTarget.style.backgroundColor = "var(--accent)";
         }}
         aria-label="Send message"
       >
