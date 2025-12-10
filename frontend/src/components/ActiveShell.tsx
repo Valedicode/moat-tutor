@@ -36,12 +36,13 @@ export function ActiveShell({
   return (
     <div className="mx-auto flex w-full flex-col gap-6 lg:flex-row" style={{ maxWidth: showPanel ? "96rem" : "48rem", transition: "max-width 600ms cubic-bezier(0.4, 0, 0.2, 1)" }}>
       <section
-        className="flex min-h-[75vh] flex-col rounded-[36px] border p-6 backdrop-blur-3xl"
+        className="flex h-[75vh] flex-col rounded-[36px] border p-6 backdrop-blur-3xl"
         style={{
           borderColor: "var(--border)",
           backgroundColor: "color-mix(in srgb, var(--surface) 75%, transparent)",
           flexBasis: showPanel ? "32%" : "100%",
           transition: "flex-basis 600ms cubic-bezier(0.4, 0, 0.2, 1)",
+          flexShrink: 0,
         }}
       >
         <div
@@ -71,7 +72,7 @@ export function ActiveShell({
 
         <div
           ref={chatScrollRef}
-          className="scrollbar-hide mt-6 flex-1 space-y-4 overflow-y-auto pr-2"
+          className="scrollbar-hide mt-6 flex-1 min-h-0 space-y-4 overflow-y-auto pr-2"
         >
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
