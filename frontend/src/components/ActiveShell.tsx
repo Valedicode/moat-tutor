@@ -34,7 +34,7 @@ export function ActiveShell({
   }, [messages.length]);
 
   return (
-    <div className="mx-auto flex w-full flex-col gap-6 lg:flex-row" style={{ maxWidth: showPanel ? "96rem" : "48rem", transition: "max-width 600ms cubic-bezier(0.4, 0, 0.2, 1)" }}>
+    <div className="mx-auto flex w-full flex-col gap-6 lg:flex-row mt-16 sm:mt-20" style={{ maxWidth: showPanel ? "96rem" : "48rem", transition: "max-width 600ms cubic-bezier(0.4, 0, 0.2, 1)" }}>
       <section
         className="flex h-[75vh] flex-col rounded-[36px] border p-6 backdrop-blur-3xl"
         style={{
