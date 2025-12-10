@@ -1,75 +1,84 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
-from agent.moat_tutor import invoke_agent
-
-
-class ChatRequest(BaseModel):
-    """Request model for chatting with the MoatTutor agent."""
-    query: str
+from api.routes import chat, companies, analysis, sessions, health
+from middleware.logging import LoggingMiddleware
 
 
 def create_app() -> FastAPI:
     """
     Application factory for the MoatTutor backend.
 
-    This keeps things flexible if we later add settings, routers, or lifespan events.
+    This creates a fully configured FastAPI application with:
+    - All API routes
+    - CORS middleware
+    - Request logging
+    - Error handling
     """
     app = FastAPI(
         title="MoatTutor Backend",
         description="FastAPI backend for MOAT-style stock explanation agent",
         version="0.1.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
     )
 
     # CORS – allow local frontend during development
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",  # Alternative port
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    @app.get("/health", tags=["system"])
-    async def health() -> dict:
-        """Simple health check endpoint."""
-        return {"status": "ok"}
+    # Add logging middleware
+    app.add_middleware(LoggingMiddleware)
 
-    @app.post("/chat", tags=["agent"])
-    async def chat(request: ChatRequest) -> dict:
+    # Include routers
+    app.include_router(health.router)  # /health, /metrics, /ready, /live
+    app.include_router(chat.router)  # /api/v1/chat
+    app.include_router(companies.router)  # /api/v1/companies
+    app.include_router(analysis.router)  # /api/v1/analyze
+    app.include_router(sessions.router)  # /api/v1/sessions
+
+    @app.get("/", tags=["root"])
+    async def root() -> dict:
         """
-        Chat with the MoatTutor agent using natural language.
-        
-        The agent will automatically determine which tools to use based on your query.
-        You can ask about stock movements, moat characteristics, news, or prices.
-        
-        Examples:
-        - "Explain why AAPL stock moved from 2023-01-01 to 2023-02-28"
-        - "What are Microsoft's competitive advantages?"
-        - "Get news for GOOGL in March 2023"
-        - "Show me price data for AMZN from Jan to Feb 2023"
-        
-        Args:
-            request: ChatRequest with the user's natural language query
+        Root endpoint with API information.
         
         Returns:
-            Agent's response with explanation and analysis
+            API information and available endpoints
         """
-        try:
-            response = invoke_agent(request.query)
-            return {
-                "query": request.query,
-                "response": response,
+        return {
+            "name": "MoatTutor Backend API",
+            "version": "0.1.0",
+            "description": "MOAT framework stock analysis agent",
+            "docs": "/docs",
+            "endpoints": {
+                "health": "/health",
+                "metrics": "/metrics",
+                "chat": "/api/v1/chat",
+                "analyze": "/api/v1/analyze",
+                "companies": "/api/v1/companies",
+                "sessions": "/api/v1/sessions",
             }
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        }
 
     return app
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
