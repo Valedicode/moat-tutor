@@ -1,0 +1,50 @@
+# Root environment and OS
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Python caches and virtualenvs
+__pycache__/
+*/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build / dist / coverage
+build/
+dist/
+coverage/
+coverage.*
+htmlcov/
+.tox/
+.cache/
+
+# Node / frontend
+node_modules/
+.npm/
+.pnp.*
+.next/
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+frontend/.eslintcache
+frontend/.env
+frontend/.env.*
+
+# Backend specifics
+backend/.env
+backend/.env.*
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# Documentation (local reading only for planning)
+backend/documentation/

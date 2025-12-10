@@ -1,8 +1,28 @@
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
-pydantic==2.9.2
-langchain==0.3.7
-langgraph==0.2.39
-python-dotenv==1.0.1
+# FastAPI and server
+fastapi[standard]>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# LangChain and LangGraph
+langchain>=1.0.0
+langgraph>=1.0.0
+langchain-openai>=1.0.0
+langchain-community>=0.3.0
+langchain-core>=0.3.0
+
+# Environment variables and settings
+python-dotenv>=1.0.0
+pydantic>=2.9.0
+pydantic-settings>=2.0.0
+
+# Data processing (for FNSPID dataset)
+pandas>=2.2.0
+numpy>=1.26.0
+
+# HTTP client for async requests
+httpx>=0.25.0
+requests>=2.31.0
+
+# HuggingFace datasets (for FNSPID)
+datasets>=2.14.0
 
 
