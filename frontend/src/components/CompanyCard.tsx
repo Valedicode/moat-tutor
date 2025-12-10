@@ -12,13 +12,15 @@ export function CompanyCard({ company, isSelected, onToggle }: CompanyCardProps)
   return (
     <button
       onClick={onToggle}
-      className="flex flex-col items-center gap-3 rounded-[28px] border p-6 transition-all duration-300 hover:scale-[1.02]"
+      className="flex flex-col items-center gap-3 rounded-[28px] border-2 p-6 transition-all duration-300 hover:scale-[1.02]"
       style={{
-        borderColor: isSelected ? "var(--accent)" : "var(--border)",
+        borderColor: isSelected ? "var(--accent)" : "transparent",
         backgroundColor: isSelected
           ? "color-mix(in srgb, var(--accent) 5%, transparent)"
           : "color-mix(in srgb, var(--surface) 75%, transparent)",
-        borderWidth: isSelected ? "2px" : "1px",
+        boxShadow: isSelected 
+          ? "none" 
+          : "0 0 0 1px var(--border)",
       }}
     >
       {/* Company Logo/Icon */}
