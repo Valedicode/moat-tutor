@@ -7,7 +7,7 @@ import { ActiveShell } from "@/components/ActiveShell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 import { nowStamp } from "@/utils/date";
-import { chat, getChatHistory } from "@/lib/moatTutorApi";
+import { chat, chatStream, type StreamEvent } from "@/lib/moatTutorApi";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -22,29 +22,6 @@ export default function Home() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const isActiveSession = messages.length > 0;
-  const sessionStorageKey = "moatTutor.sessionId";
-
-  useEffect(() => {
-    // Restore session + history on load
-    const stored = window.localStorage.getItem(sessionStorageKey);
-    if (!stored) return;
-
-    setSessionId(stored);
-
-    const controller = new AbortController();
-    getChatHistory({ sessionId: stored, signal: controller.signal })
-      .then((session) => {
-        setMessages(session.messages);
-      })
-      .catch(() => {
-        // Session may have expired/been cleared on backend — reset local state.
-        window.localStorage.removeItem(sessionStorageKey);
-        setSessionId(null);
-        setMessages([]);
-      });
-
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     if (!isListening) {
@@ -103,27 +80,56 @@ export default function Home() {
     setIsSending(true);
 
     try {
-      const result = await chat({ query: text, sessionId });
-
-      setSessionId(result.session_id);
-      window.localStorage.setItem(sessionStorageKey, result.session_id);
-
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === placeholderId ? result.message : msg)),
-      );
+      // Prefer streaming; fall back to non-streaming if it fails.
+      let accumulated = "";
+      await chatStream({
+        query: text,
+        sessionId,
+        onEvent: (evt: StreamEvent) => {
+          if (evt.event === "meta") {
+            setSessionId(evt.data.session_id);
+          } else if (evt.event === "delta") {
+            accumulated += evt.data.delta;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === placeholderId ? { ...msg, content: accumulated } : msg,
+              ),
+            );
+          } else if (evt.event === "done") {
+            setSessionId(evt.data.session_id);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === placeholderId ? evt.data.message : msg,
+              ),
+            );
+          } else if (evt.event === "error") {
+            throw new Error(evt.data.error);
+          }
+        },
+      });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unknown error occurred";
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === placeholderId
-            ? {
-                ...msg,
-                content: `Sorry—failed to reach the agent. ${message}`,
-              }
-            : msg,
-        ),
-      );
+      try {
+        const result = await chat({ query: text, sessionId });
+        setSessionId(result.session_id);
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === placeholderId ? result.message : msg)),
+        );
+      } catch (fallbackError) {
+        const message =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Unknown error occurred";
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === placeholderId
+              ? {
+                  ...msg,
+                  content: `Sorry—failed to reach the agent. ${message}`,
+                }
+              : msg,
+          ),
+        );
+      }
     } finally {
       setIsSending(false);
     }
