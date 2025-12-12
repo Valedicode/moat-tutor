@@ -83,6 +83,13 @@ async def analyze_stock(
         elif not session_id:
             session_id = store.create_session()
         
+        # Get conversation history before adding new message
+        previous_messages = store.get_messages(session_id)
+        conversation_history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in previous_messages
+        ]
+        
         # Create user message
         user_message = ChatMessage(
             id=f"msg-{uuid.uuid4()}",
@@ -94,8 +101,8 @@ async def analyze_stock(
         # Store user message
         store.add_message(session_id, user_message)
         
-        # Invoke agent
-        agent_response = invoke_agent(query)
+        # Invoke agent with conversation history
+        agent_response = invoke_agent(query, conversation_history)
         
         # Create assistant message
         assistant_message = ChatMessage(

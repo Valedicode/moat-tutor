@@ -64,6 +64,13 @@ async def chat(
         elif not session_id:
             session_id = store.create_session()
         
+        # Get conversation history before adding new message
+        previous_messages = store.get_messages(session_id)
+        conversation_history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in previous_messages
+        ]
+        
         # Create user message
         user_message = ChatMessage(
             id=f"msg-{uuid.uuid4()}",
@@ -75,8 +82,8 @@ async def chat(
         # Store user message
         store.add_message(session_id, user_message)
         
-        # Invoke agent
-        agent_response = invoke_agent(request.query)
+        # Invoke agent with conversation history
+        agent_response = invoke_agent(request.query, conversation_history)
         
         # Create assistant message
         assistant_message = ChatMessage(
@@ -134,6 +141,13 @@ async def chat_stream(
     elif not session_id:
         session_id = store.create_session()
 
+    # Get conversation history before adding new message
+    previous_messages = store.get_messages(session_id)
+    conversation_history = [
+        {"role": msg.role, "content": msg.content}
+        for msg in previous_messages
+    ]
+
     # Create/store user message immediately
     user_message = ChatMessage(
         id=f"msg-{uuid.uuid4()}",
@@ -154,7 +168,7 @@ async def chat_stream(
             # Send meta first so client can persist session immediately
             yield _sse("meta", {"session_id": session_id, "message_id": assistant_message_id})
 
-            stream_iter = stream_agent_messages(request.query)
+            stream_iter = stream_agent_messages(request.query, conversation_history)
 
             # stream_agent_messages may return an async generator or a sync generator
             if hasattr(stream_iter, "__aiter__"):

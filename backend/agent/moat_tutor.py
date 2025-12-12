@@ -304,7 +304,7 @@ def create_moat_agent():
 # Agent Invocation Helper
 # ============================================================================
 
-def invoke_agent(query: str) -> str:
+def invoke_agent(query: str, conversation_history: list[dict] = None) -> str:
     """
     Invoke the MoatTutor agent with a natural language query.
     
@@ -313,6 +313,8 @@ def invoke_agent(query: str) -> str:
     
     Args:
         query: Natural language query from the user
+        conversation_history: Optional list of previous messages in format
+                            [{"role": "user/assistant", "content": "..."}]
     
     Returns:
         The agent's response as a string
@@ -323,7 +325,14 @@ def invoke_agent(query: str) -> str:
         - "Get news for GOOGL in March 2023"
     """
     agent = create_moat_agent()
-    result = agent.invoke({"messages": [{"role": "user", "content": query}]})
+    
+    # Build message list with conversation history
+    messages = []
+    if conversation_history:
+        messages.extend(conversation_history)
+    messages.append({"role": "user", "content": query})
+    
+    result = agent.invoke({"messages": messages})
     
     # Extract the final message content
     if isinstance(result, dict) and "messages" in result:
@@ -332,19 +341,31 @@ def invoke_agent(query: str) -> str:
         return str(result)
 
 
-def stream_agent_messages(query: str):
+def stream_agent_messages(query: str, conversation_history: list[dict] = None):
     """
     Stream token/message chunks from the agent using LangChain streaming.
+
+    Args:
+        query: User's question or request
+        conversation_history: Optional list of previous messages in format
+                            [{"role": "user/assistant", "content": "..."}]
 
     Yields (token, metadata) tuples as produced by agent.stream/agent.astream
     with stream_mode="messages".
     """
     agent = create_moat_agent()
+    
+    # Build message list with conversation history
+    messages = []
+    if conversation_history:
+        messages.extend(conversation_history)
+    messages.append({"role": "user", "content": query})
+    
     # Prefer async streaming when available in the current LangChain/LangGraph stack.
     if hasattr(agent, "astream"):
         async def _agen():
             async for token, metadata in agent.astream(
-                {"messages": [{"role": "user", "content": query}]},
+                {"messages": messages},
                 stream_mode="messages",
             ):
                 yield token, metadata
@@ -353,7 +374,7 @@ def stream_agent_messages(query: str):
     # Fallback to sync streaming
     def _gen():
         for token, metadata in agent.stream(
-            {"messages": [{"role": "user", "content": query}]},
+            {"messages": messages},
             stream_mode="messages",
         ):
             yield token, metadata
