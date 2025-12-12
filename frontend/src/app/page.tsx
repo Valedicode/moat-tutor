@@ -6,13 +6,15 @@ import { IdleHero } from "@/components/IdleHero";
 import { ActiveShell } from "@/components/ActiveShell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
-import { assistantNarratives } from "@/constants/chat";
 import { nowStamp } from "@/utils/date";
+import { chat, getChatHistory } from "@/lib/moatTutorApi";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [visualizerLevels, setVisualizerLevels] = useState<number[]>(
     () => Array.from({ length: 16 }, () => 10),
   );
@@ -20,6 +22,29 @@ export default function Home() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const isActiveSession = messages.length > 0;
+  const sessionStorageKey = "moatTutor.sessionId";
+
+  useEffect(() => {
+    // Restore session + history on load
+    const stored = window.localStorage.getItem(sessionStorageKey);
+    if (!stored) return;
+
+    setSessionId(stored);
+
+    const controller = new AbortController();
+    getChatHistory({ sessionId: stored, signal: controller.signal })
+      .then((session) => {
+        setMessages(session.messages);
+      })
+      .catch(() => {
+        // Session may have expired/been cleared on backend — reset local state.
+        window.localStorage.removeItem(sessionStorageKey);
+        setSessionId(null);
+        setMessages([]);
+      });
+
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     if (!isListening) {
@@ -52,7 +77,8 @@ export default function Home() {
     });
   }, [messages]);
 
-  const handleSend = (value?: string) => {
+  const handleSend = async (value?: string) => {
+    if (isSending) return;
     const text = (value ?? inputValue).trim();
     if (!text) return;
 
@@ -63,22 +89,44 @@ export default function Home() {
       timestamp: nowStamp(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
 
-    const assistantMessage: Message = {
-      id: crypto.randomUUID(),
+    const placeholderId = crypto.randomUUID();
+    const assistantPlaceholder: Message = {
+      id: placeholderId,
       role: "assistant",
-      content:
-        assistantNarratives[
-          Math.floor(Math.random() * assistantNarratives.length)
-        ],
+      content: "Thinking…",
       timestamp: nowStamp(),
     };
 
-    setTimeout(() => {
-      setMessages((prev) => [...prev, assistantMessage]);
-    }, 700);
+    setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
+    setIsSending(true);
+
+    try {
+      const result = await chat({ query: text, sessionId });
+
+      setSessionId(result.session_id);
+      window.localStorage.setItem(sessionStorageKey, result.session_id);
+
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === placeholderId ? result.message : msg)),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error occurred";
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === placeholderId
+            ? {
+                ...msg,
+                content: `Sorry—failed to reach the agent. ${message}`,
+              }
+            : msg,
+        ),
+      );
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const backgroundGrid = useMemo(
