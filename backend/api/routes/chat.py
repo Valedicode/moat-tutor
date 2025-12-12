@@ -7,11 +7,12 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+import json
 
 from api.models.chat import ChatRequest, ChatResponse, ChatMessage, SessionInfo
 from api.models.responses import ErrorResponse
-from agent.moat_tutor import invoke_agent
+from agent.moat_tutor import invoke_agent, stream_agent_messages
 from services.parser import AgentResponseParser
 from services.session_store import SessionStore, get_session_store
 
@@ -110,6 +111,121 @@ async def chat(
             status_code=500,
             detail=f"Error processing chat request: {str(e)}"
         )
+
+
+@router.post("/stream")
+async def chat_stream(
+    request: ChatRequest,
+    store: SessionStore = Depends(get_session_store)
+):
+    """
+    Stream chat responses from the MoatTutor agent using Server-Sent Events (SSE).
+
+    Emits events:
+    - event: meta   data: {"session_id": "...", "message_id": "..."}
+    - event: delta  data: {"delta": "..."}
+    - event: done   data: {"message": {...}, "session_id": "...", "parsed": ...}
+    - event: error  data: {"error": "..."}  (best-effort)
+    """
+    # Get or create session
+    session_id = request.session_id
+    if session_id and not store.session_exists(session_id):
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    elif not session_id:
+        session_id = store.create_session()
+
+    # Create/store user message immediately
+    user_message = ChatMessage(
+        id=f"msg-{uuid.uuid4()}",
+        role="user",
+        content=request.query,
+        timestamp=datetime.utcnow().isoformat()
+    )
+    store.add_message(session_id, user_message)
+
+    assistant_message_id = f"msg-{uuid.uuid4()}"
+
+    def _sse(event: str, data_obj) -> str:
+        return f"event: {event}\ndata: {json.dumps(data_obj, ensure_ascii=False)}\n\n"
+
+    async def event_generator():
+        full_text_parts = []
+        try:
+            # Send meta first so client can persist session immediately
+            yield _sse("meta", {"session_id": session_id, "message_id": assistant_message_id})
+
+            stream_iter = stream_agent_messages(request.query)
+
+            # stream_agent_messages may return an async generator or a sync generator
+            if hasattr(stream_iter, "__aiter__"):
+                async for token, metadata in stream_iter:
+                    delta = _extract_text_delta(token)
+                    if not delta:
+                        continue
+                    full_text_parts.append(delta)
+                    yield _sse("delta", {"delta": delta})
+            else:
+                for token, metadata in stream_iter:
+                    delta = _extract_text_delta(token)
+                    if not delta:
+                        continue
+                    full_text_parts.append(delta)
+                    yield _sse("delta", {"delta": delta})
+
+            full_text = "".join(full_text_parts).strip()
+
+            assistant_message = ChatMessage(
+                id=assistant_message_id,
+                role="assistant",
+                content=full_text,
+                timestamp=datetime.utcnow().isoformat()
+            )
+            store.add_message(session_id, assistant_message)
+
+            parsed = None
+            try:
+                parsed = AgentResponseParser.parse(full_text)
+            except Exception as parse_error:
+                print(f"Warning: Failed to parse agent response: {parse_error}")
+
+            yield _sse("done", {"message": assistant_message.model_dump(), "session_id": session_id, "parsed": parsed.model_dump() if parsed else None})
+        except Exception as e:
+            yield _sse("error", {"error": str(e)})
+
+    def _extract_text_delta(token) -> str:
+        """
+        Extract only user-visible text from LangChain streamed message chunks.
+
+        We intentionally ignore tool_call chunks and other non-text blocks.
+        """
+        try:
+            blocks = getattr(token, "content_blocks", None)
+            if not blocks:
+                # Some integrations stream plain content
+                content = getattr(token, "content", None)
+                if isinstance(content, str) and content:
+                    return content
+                return ""
+
+            parts = []
+            for block in blocks:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text") or ""
+                    if text:
+                        parts.append(text)
+            return "".join(parts)
+        except Exception:
+            return ""
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/history/{session_id}", response_model=SessionInfo)

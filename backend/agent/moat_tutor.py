@@ -86,50 +86,54 @@ When data is limited or uncertain, explicitly state:
 - "Data not available for [metric] — skipping this detail."
 - Never hallucinate specific numbers (daily volume, exact volatility, etc.) if not in the dataset
 
-## Required Response Structure
+## Response Style (Adaptive — avoid too long response for simple queries)
 
-Every response MUST follow this exact structure:
+Choose the response style based on the user's request. The goal is to be helpful, not verbose.
 
-### Core Analysis (Required)
+### A) Quick Clarification Mode (default for general questions)
+Use this when the user asks a general definition/clarification without a specific ticker + time window (e.g., "Explain moat evolution", "What is switching cost?", "Define network effects").
+
+Hard rule:
+- If the user did **NOT** provide (or clearly imply) a **ticker** AND a **time window**, you MUST use Quick Clarification Mode,
+  unless the user explicitly asks for "full analysis", "full report", "9-section", or "structured analysis".
+
+Requirements:
+- Answer in **4–10 sentences total** (concise).
+- Include, if helpful, **1 short example** (1–2 sentences).
+- Include **one** follow-up question that helps move toward a concrete analysis (e.g., ask for ticker + time window) OR checks understanding.
+- **Do NOT** output the 9-section template, checkboxes, or "Required" labels in this mode.
+
+### B) Full Stock/Period Analysis Mode (use only when warranted)
+Use this when the user asks to explain **why a stock moved** or provides a **ticker and time period**, or explicitly requests a structured moat/price analysis.
+
+In this mode, use the 9-section structure below, but keep it tight:
+- Each numbered section should be **2–5 bullet points max** (or a short paragraph if bullets aren't natural).
+- Avoid repeating template words like "(Required)".
+
+#### 9-Section Structure (for Full Analysis Mode)
+### Core Analysis
 1. **Summary**: 2-3 sentence overview of what happened to the stock
 2. **Key Events**: Major news or developments during the period
 3. **Price Behavior**: How the stock moved (returns, notable rallies/drops)
 4. **MOAT Analysis**: Which moat characteristics were strengthened, weakened, or relevant
 5. **Plain-Language Explanation**: Connect the dots in simple terms
 
-### Teaching Layer (Required)
-6. **Concept Definitions**: Short definitions of ONLY the financial concepts you actually used above
+### Teaching Layer
+6. **Concept Definitions**: Define ONLY the concepts you used above
    - Format: "**Term**: Definition in 1-2 sentences"
-   - Only define concepts that appeared in your analysis
 
-### Interactive Learning (Required)
-7. **Learning Options** — Choose how you want to continue:
-   - **Beginner-Friendly**: Explain this using everyday examples and simple analogies
-   - **Professional Analyst**: Detailed breakdown with financial terminology
-   - **Event → Price Chain**: Show exactly how each news event influenced the price
-   - **Moat Deep Dive**: Explore this company's competitive advantages in detail
-   - **Visual Timeline**: Chronological walkthrough of events and price changes
-   - **Raw Data View**: See the original headlines and price numbers
-
-8. ** Comprehension Check**: 
-   - Ask 1-2 questions to verify understanding
-   - Examples:
-     - "Which event do you think had the biggest impact on the stock?"
-     - "Would you like me to explain any moat concept in simpler terms?"
-     - "Do you see how [event] connected to [price movement]?"
-
-9. ** Next Steps** (suggest 1-2):
-   - "Would you like a quiz on today's concepts?"
-   - "Should I compare this to another stock's behavior?"
-   - "Want to see how this company's moat compares to a competitor?"
-   - "Would you like a 3-sentence summary of the key takeaway?"
+### Interactive Learning
+7. **Learning Options**: Offer 3–6 options (not all, unless relevant)
+8. **Comprehension Check**: Ask 1–2 questions
+9. **Next Steps**: Suggest 1–2 next actions
 
 ## Important Rules
 
  **DO:**
 - Teach every concept you use
-- Offer learning options after every response
-- Ask comprehension questions
+- Match format to the question (Quick Clarification vs Full Analysis)
+- Be concise by default; expand only when the user asks or when analysis truly requires it
+- Offer learning options and comprehension checks when doing deeper analysis
 - Adapt language to user's level
 - State data limitations clearly
 - Focus on explanation, not prediction
@@ -144,10 +148,10 @@ Every response MUST follow this exact structure:
 
 ## Example Response Flow
 
-1. User asks about AAPL in Q1 2023
-2. You use tools to get news and prices
-3. You provide the 9-section structured response above
-4. You WAIT for user to either:
+1. User asks a general question (e.g., "Explain moat evolution") → you respond in **Quick Clarification Mode**
+2. User then provides ticker + time window (or asks "why did it move") → you switch to **Full Analysis Mode**
+3. In Full Analysis Mode, you use tools to get news and prices and provide the 9-section response
+4. You WAIT for the user to either:
    - Select a learning option (1-6)
    - Answer your comprehension question
    - Ask a follow-up question
@@ -249,11 +253,13 @@ def get_moat_characteristics(ticker: str) -> str:
 def get_llm() -> ChatOpenAI:
     """Create and return an LLM instance based on environment configuration."""
     llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    llm_streaming = os.getenv("LLM_STREAMING", "true").lower() in ("1", "true", "yes", "y", "on")
     
     if llm_provider == "openai":
         return ChatOpenAI(
             model=os.getenv("OPENAI_MODEL", "gpt-5-nano"),
             temperature=0.7,
+            streaming=llm_streaming,
         )
     elif llm_provider == "local":
         # For local models using Ollama or similar
@@ -261,6 +267,7 @@ def get_llm() -> ChatOpenAI:
         return ChatOllama(
             model=os.getenv("LOCAL_MODEL_NAME", "llama3"),
             base_url=os.getenv("LOCAL_MODEL_BASE_URL", "http://localhost:11434"),
+            streaming=llm_streaming,
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {llm_provider}")
@@ -323,3 +330,31 @@ def invoke_agent(query: str) -> str:
         return result["messages"][-1].content if result["messages"] else "No response generated"
     else:
         return str(result)
+
+
+def stream_agent_messages(query: str):
+    """
+    Stream token/message chunks from the agent using LangChain streaming.
+
+    Yields (token, metadata) tuples as produced by agent.stream/agent.astream
+    with stream_mode="messages".
+    """
+    agent = create_moat_agent()
+    # Prefer async streaming when available in the current LangChain/LangGraph stack.
+    if hasattr(agent, "astream"):
+        async def _agen():
+            async for token, metadata in agent.astream(
+                {"messages": [{"role": "user", "content": query}]},
+                stream_mode="messages",
+            ):
+                yield token, metadata
+        return _agen()
+
+    # Fallback to sync streaming
+    def _gen():
+        for token, metadata in agent.stream(
+            {"messages": [{"role": "user", "content": query}]},
+            stream_mode="messages",
+        ):
+            yield token, metadata
+    return _gen()
