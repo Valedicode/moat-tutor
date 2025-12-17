@@ -48,3 +48,8 @@ backend/.ruff_cache/
 
 # Documentation (local reading only for planning)
 backend/documentation/
+
+# Data files (keep structure, exclude actual data)
+backend/data/*.xlsx
+backend/data/*.xls
+backend/data/*.csv
