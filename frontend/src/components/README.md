@@ -15,7 +15,7 @@ components/
 │   ├── SendIcon.tsx   # Send/submit icon
 │   └── index.ts       # Barrel export
 ├── ActiveShell.tsx    # Active chat state with left panel and right dashboard
-├── IdleHero.tsx       # Initial greeting/idle state
+├── WelcomeScreen.tsx  # Initial greeting/welcome screen
 └── README.md          # This file
 ```
 
@@ -33,7 +33,7 @@ components/
 
 ### Layout Components
 
-- **IdleHero**: The centered greeting screen shown when no messages exist
+- **WelcomeScreen**: The centered greeting screen shown when no messages exist
 - **ActiveShell**: The split-screen layout with chat panel (30%) and dashboard panel (70%)
 
 ## Usage
@@ -41,7 +41,7 @@ components/
 Import components using path aliases:
 
 ```tsx
-import { IdleHero } from "@/components/IdleHero";
+import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ChatInput, MessageBubble } from "@/components/chat";
 import { MicIcon, SendIcon } from "@/components/icons";
 ```
