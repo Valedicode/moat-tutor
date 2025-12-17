@@ -48,6 +48,9 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> 
 export async function chat(params: {
   query: string;
   sessionId?: string | null;
+  ticker?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
   signal?: AbortSignal;
 }): Promise<ChatResponse> {
   try {
@@ -57,6 +60,9 @@ export async function chat(params: {
       body: JSON.stringify({
         query: params.query,
         session_id: params.sessionId ?? undefined,
+        ticker: params.ticker ?? undefined,
+        start_date: params.startDate ?? undefined,
+        end_date: params.endDate ?? undefined,
       }),
       signal: params.signal,
     });
@@ -88,6 +94,9 @@ export type StreamEvent =
 export async function chatStream(params: {
   query: string;
   sessionId?: string | null;
+  ticker?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
   onEvent: (evt: StreamEvent) => void;
   signal?: AbortSignal;
 }): Promise<void> {
@@ -97,6 +106,9 @@ export async function chatStream(params: {
     body: JSON.stringify({
       query: params.query,
       session_id: params.sessionId ?? undefined,
+      ticker: params.ticker ?? undefined,
+      start_date: params.startDate ?? undefined,
+      end_date: params.endDate ?? undefined,
     }),
     signal: params.signal,
   });

@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Message } from "@/types/chat";
-import { IdleHero } from "@/components/IdleHero";
+import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ActiveShell } from "@/components/ActiveShell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 import { nowStamp } from "@/utils/date";
 import { chat, chatStream, type StreamEvent } from "@/lib/moatTutorApi";
+import { availableCompanies } from "@/constants/companies";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -15,6 +16,8 @@ export default function Home() {
   const [isListening, setIsListening] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [dateRangeYears, setDateRangeYears] = useState<number>(1);
   const [visualizerLevels, setVisualizerLevels] = useState<number[]>(
     () => Array.from({ length: 16 }, () => 10),
   );
@@ -22,6 +25,15 @@ export default function Home() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const isActiveSession = messages.length > 0;
+
+  // Derive ticker and date range from selection
+  const selectedCompany = selectedCompanyId
+    ? availableCompanies.find((c) => c.id === selectedCompanyId)
+    : null;
+  const ticker = selectedCompany?.ticker ?? null;
+  const endYear = 2023;
+  const startDate = ticker ? `${endYear - dateRangeYears}-01-01` : null;
+  const endDate = ticker ? `${endYear}-12-31` : null;
 
   useEffect(() => {
     if (!isListening) {
@@ -85,6 +97,9 @@ export default function Home() {
       await chatStream({
         query: text,
         sessionId,
+        ticker,
+        startDate,
+        endDate,
         onEvent: (evt: StreamEvent) => {
           if (evt.event === "meta") {
             setSessionId(evt.data.session_id);
@@ -109,7 +124,7 @@ export default function Home() {
       });
     } catch (error) {
       try {
-        const result = await chat({ query: text, sessionId });
+        const result = await chat({ query: text, sessionId, ticker, startDate, endDate });
         setSessionId(result.session_id);
         setMessages((prev) =>
           prev.map((msg) => (msg.id === placeholderId ? result.message : msg)),
@@ -155,11 +170,15 @@ export default function Home() {
       </div>
       <ThemeToggle />
       {!isActiveSession ? (
-        <IdleHero
+        <WelcomeScreen
           inputValue={inputValue}
           onInputChange={setInputValue}
           onSubmit={() => handleSend()}
           toggleListening={() => setIsListening((prev) => !prev)}
+          selectedCompanyId={selectedCompanyId}
+          onCompanyChange={setSelectedCompanyId}
+          dateRangeYears={dateRangeYears}
+          onDateRangeChange={setDateRangeYears}
         />
       ) : (
         <ActiveShell
