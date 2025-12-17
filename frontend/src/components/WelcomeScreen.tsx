@@ -1,30 +1,34 @@
 "use client";
 
-import { useState } from "react";
 import { ChatInput } from "@/components/chat";
 import { CompanyCard } from "@/components/CompanyCard";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { ExamplePrompts } from "@/components/ExamplePrompts";
 import { availableCompanies } from "@/constants/companies";
 
-type IdleHeroProps = {
+type WelcomeScreenProps = {
   inputValue: string;
   onInputChange: (value: string) => void;
   onSubmit: () => void;
   toggleListening: () => void;
+  selectedCompanyId: string | null;
+  onCompanyChange: (companyId: string | null) => void;
+  dateRangeYears: number;
+  onDateRangeChange: (years: number) => void;
 };
 
-export function IdleHero({
+export function WelcomeScreen({
   inputValue,
   onInputChange,
   onSubmit,
   toggleListening,
-}: IdleHeroProps) {
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [dateRangeYears, setDateRangeYears] = useState<number>(1);
-
+  selectedCompanyId,
+  onCompanyChange,
+  dateRangeYears,
+  onDateRangeChange,
+}: WelcomeScreenProps) {
   const toggleCompany = (companyId: string) => {
-    setSelectedCompany((prev) => (prev === companyId ? null : companyId));
+    onCompanyChange(selectedCompanyId === companyId ? null : companyId);
   };
 
   return (
@@ -74,7 +78,7 @@ export function IdleHero({
           <CompanyCard
             key={company.id}
             company={company}
-            isSelected={selectedCompany === company.id}
+            isSelected={selectedCompanyId === company.id}
             onToggle={() => toggleCompany(company.id)}
           />
         ))}
@@ -82,7 +86,7 @@ export function IdleHero({
 
       {/* Date Range Picker */}
       <div className="mt-8 w-full max-w-md">
-        <DateRangePicker value={dateRangeYears} onChange={setDateRangeYears} />
+        <DateRangePicker value={dateRangeYears} onChange={onDateRangeChange} />
       </div>
     </section>
   );
