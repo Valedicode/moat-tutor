@@ -27,7 +27,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         <span>{message.timestamp}</span>
       </div>
       <p
-        className="text-sm leading-relaxed"
+        className="text-sm leading-relaxed whitespace-pre-wrap"
         style={{ color: "var(--text-primary)" }}
       >
         {message.content}
