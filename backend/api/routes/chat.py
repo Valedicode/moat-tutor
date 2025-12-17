@@ -18,6 +18,32 @@ from services.session_store import SessionStore, get_session_store
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
+# Maximum number of messages to include in conversation history
+# Prevents unbounded context growth; keeps most recent exchanges
+# TODO: For future implementation, consider using LangGraph's MemorySaver
+# with summarization middleware for smarter context management
+# See: https://docs.langchain.com/oss/langchain/short-term-memory
+MAX_HISTORY_MESSAGES = 50
+
+
+def _build_enhanced_query(query: str, ticker: Optional[str], start_date: Optional[str], end_date: Optional[str]) -> str:
+    """
+    Enhance the user query with context from selected company and date range.
+    
+    If ticker and dates are provided, they are prepended to give the agent
+    explicit context about what to analyze.
+    """
+    if not ticker:
+        return query
+    
+    context_parts = [f"[Context: Analyzing {ticker}"]
+    if start_date and end_date:
+        context_parts.append(f" from {start_date} to {end_date}")
+    context_parts.append("]")
+    
+    context = "".join(context_parts)
+    return f"{context}\n\n{query}"
+
 
 @router.post("", response_model=ChatResponse)
 async def chat(
@@ -64,13 +90,6 @@ async def chat(
         elif not session_id:
             session_id = store.create_session()
         
-        # Get conversation history before adding new message
-        previous_messages = store.get_messages(session_id)
-        conversation_history = [
-            {"role": msg.role, "content": msg.content}
-            for msg in previous_messages
-        ]
-        
         # Create user message
         user_message = ChatMessage(
             id=f"msg-{uuid.uuid4()}",
@@ -82,8 +101,23 @@ async def chat(
         # Store user message
         store.add_message(session_id, user_message)
         
+        # Get conversation history (exclude the message we just added)
+        previous_messages = store.get_messages(session_id)[:-1]
+        # Trim to last N messages to prevent unbounded context growth
+        if len(previous_messages) > MAX_HISTORY_MESSAGES:
+            previous_messages = previous_messages[-MAX_HISTORY_MESSAGES:]
+        conversation_history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in previous_messages
+        ]
+        
+        # Build enhanced query with context
+        enhanced_query = _build_enhanced_query(
+            request.query, request.ticker, request.start_date, request.end_date
+        )
+        
         # Invoke agent with conversation history
-        agent_response = invoke_agent(request.query, conversation_history)
+        agent_response = invoke_agent(enhanced_query, conversation_history)
         
         # Create assistant message
         assistant_message = ChatMessage(
@@ -141,13 +175,6 @@ async def chat_stream(
     elif not session_id:
         session_id = store.create_session()
 
-    # Get conversation history before adding new message
-    previous_messages = store.get_messages(session_id)
-    conversation_history = [
-        {"role": msg.role, "content": msg.content}
-        for msg in previous_messages
-    ]
-
     # Create/store user message immediately
     user_message = ChatMessage(
         id=f"msg-{uuid.uuid4()}",
@@ -168,7 +195,21 @@ async def chat_stream(
             # Send meta first so client can persist session immediately
             yield _sse("meta", {"session_id": session_id, "message_id": assistant_message_id})
 
-            stream_iter = stream_agent_messages(request.query, conversation_history)
+            # Get conversation history (exclude the user message we just added)
+            previous_messages = store.get_messages(session_id)[:-1]
+            # Trim to last N messages to prevent unbounded context growth
+            if len(previous_messages) > MAX_HISTORY_MESSAGES:
+                previous_messages = previous_messages[-MAX_HISTORY_MESSAGES:]
+            conversation_history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in previous_messages
+            ]
+            
+            # Build enhanced query with context
+            enhanced_query = _build_enhanced_query(
+                request.query, request.ticker, request.start_date, request.end_date
+            )
+            stream_iter = stream_agent_messages(enhanced_query, conversation_history)
 
             # stream_agent_messages may return an async generator or a sync generator
             if hasattr(stream_iter, "__aiter__"):
