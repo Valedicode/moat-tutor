@@ -74,17 +74,48 @@ All data is loaded from a **controlled, historical dataset** for reproducibility
 
 ### Getting Started
 
-- **Prerequisites**
-  - Python 3.10+ for the `FastAPI` backend and LangChain/LangGraph agent.
-  - Node.js 18+ for the `Next.js` frontend.
-  - Access to an LLM API or local model (e.g., OpenAI or an open-source model).
+#### Prerequisites
 
-- **Backend setup (FastAPI + LangChain)**
+- Python 3.10+ for the `FastAPI` backend and LangChain/LangGraph agent.
+- Node.js 18+ for the `Next.js` frontend.
+- Access to an LLM API (e.g., OpenAI API key).
 
-git clone <this-repo-url>
-cd moatexplain
-pip install -r requirements.txt- **Frontend setup (Next.js)**  
-  From the frontend directory (e.g., `web/`):
+#### 1. Clone the repository
 
+```bash
+git clone https://github.com/Valedicode/moat-tutor.git
+cd moat-tutor
+```
+
+#### 2. Backend setup (FastAPI + LangChain)
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+Create a `.env` file in the `backend/` directory:
+
+```env
+OPENAI_API_KEY=your_openai_api_key
+LLM_MODEL=gpt-4o-mini
+LLM_STREAMING=true
+```
+
+Start the backend server:
+
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+The API will be available at `http://localhost:8000`.
+
+#### 3. Frontend setup (Next.js)
+
+```bash
+cd frontend
 pnpm install
 pnpm dev
+```
+
+The frontend will be available at `http://localhost:3000`.
