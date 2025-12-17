@@ -18,6 +18,11 @@ from services.session_store import SessionStore, get_session_store
 
 router = APIRouter(prefix="/api/v1/analyze", tags=["analysis"])
 
+# Maximum number of messages to include in conversation history
+# TODO: For future implementation, consider using LangGraph's MemorySaver
+# with summarization middleware for smarter context management
+MAX_HISTORY_MESSAGES = 50
+
 
 @router.post("", response_model=ParsedAnalysis)
 async def analyze_stock(
@@ -83,13 +88,6 @@ async def analyze_stock(
         elif not session_id:
             session_id = store.create_session()
         
-        # Get conversation history before adding new message
-        previous_messages = store.get_messages(session_id)
-        conversation_history = [
-            {"role": msg.role, "content": msg.content}
-            for msg in previous_messages
-        ]
-        
         # Create user message
         user_message = ChatMessage(
             id=f"msg-{uuid.uuid4()}",
@@ -100,6 +98,16 @@ async def analyze_stock(
         
         # Store user message
         store.add_message(session_id, user_message)
+        
+        # Get conversation history (exclude the message we just added)
+        previous_messages = store.get_messages(session_id)[:-1]
+        # Trim to last N messages to prevent unbounded context growth
+        if len(previous_messages) > MAX_HISTORY_MESSAGES:
+            previous_messages = previous_messages[-MAX_HISTORY_MESSAGES:]
+        conversation_history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in previous_messages
+        ]
         
         # Invoke agent with conversation history
         agent_response = invoke_agent(query, conversation_history)
