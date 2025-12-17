@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "react";
 import { MicIcon, SendIcon } from "@/components/icons";
 
 type ChatInputProps = {
@@ -17,9 +18,27 @@ export function ChatInput({
   placeholder = "Ask any question",
   variant = "active",
 }: ChatInputProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+  }, [value]);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter = submit, Shift+Enter = new line
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSubmit();
+    }
+  };
+
   const containerClass =
     variant === "idle"
-      ? "mt-10 w-full max-w-2xl flex items-center gap-3 rounded-full p-2 backdrop-blur-2xl"
+      ? "mt-10 w-full max-w-2xl flex items-center gap-3 rounded-[24px] p-2 backdrop-blur-2xl"
       : "flex items-center gap-3 rounded-[24px] p-4";
 
   const containerStyle =
@@ -63,13 +82,19 @@ export function ChatInput({
       >
         <MicIcon active={false} />
       </button>
-      <input
+      <textarea
+        ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className="flex-1 bg-transparent text-base outline-none"
+        rows={1}
+        className="flex-1 resize-none bg-transparent text-base outline-none py-2"
         style={{
           color: "var(--text-primary)",
+          minHeight: "24px",
+          maxHeight: "200px",
+          lineHeight: "1.5",
         }}
       />
       <button

@@ -2,17 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Message } from "@/types/chat";
-import { IdleHero } from "@/components/IdleHero";
+import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ActiveShell } from "@/components/ActiveShell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
-import { assistantNarratives } from "@/constants/chat";
 import { nowStamp } from "@/utils/date";
+import { chat, chatStream, type StreamEvent } from "@/lib/moatTutorApi";
+import { availableCompanies } from "@/constants/companies";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [dateRangeYears, setDateRangeYears] = useState<number>(1);
   const [visualizerLevels, setVisualizerLevels] = useState<number[]>(
     () => Array.from({ length: 16 }, () => 10),
   );
@@ -20,6 +25,15 @@ export default function Home() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const isActiveSession = messages.length > 0;
+
+  // Derive ticker and date range from selection
+  const selectedCompany = selectedCompanyId
+    ? availableCompanies.find((c) => c.id === selectedCompanyId)
+    : null;
+  const ticker = selectedCompany?.ticker ?? null;
+  const endYear = 2023;
+  const startDate = ticker ? `${endYear - dateRangeYears}-01-01` : null;
+  const endDate = ticker ? `${endYear}-12-31` : null;
 
   useEffect(() => {
     if (!isListening) {
@@ -52,7 +66,8 @@ export default function Home() {
     });
   }, [messages]);
 
-  const handleSend = (value?: string) => {
+  const handleSend = async (value?: string) => {
+    if (isSending) return;
     const text = (value ?? inputValue).trim();
     if (!text) return;
 
@@ -63,22 +78,76 @@ export default function Home() {
       timestamp: nowStamp(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
 
-    const assistantMessage: Message = {
-      id: crypto.randomUUID(),
+    const placeholderId = crypto.randomUUID();
+    const assistantPlaceholder: Message = {
+      id: placeholderId,
       role: "assistant",
-      content:
-        assistantNarratives[
-          Math.floor(Math.random() * assistantNarratives.length)
-        ],
+      content: "Thinking…",
       timestamp: nowStamp(),
     };
 
-    setTimeout(() => {
-      setMessages((prev) => [...prev, assistantMessage]);
-    }, 700);
+    setMessages((prev) => [...prev, userMessage, assistantPlaceholder]);
+    setIsSending(true);
+
+    try {
+      // Prefer streaming; fall back to non-streaming if it fails.
+      let accumulated = "";
+      await chatStream({
+        query: text,
+        sessionId,
+        ticker,
+        startDate,
+        endDate,
+        onEvent: (evt: StreamEvent) => {
+          if (evt.event === "meta") {
+            setSessionId(evt.data.session_id);
+          } else if (evt.event === "delta") {
+            accumulated += evt.data.delta;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === placeholderId ? { ...msg, content: accumulated } : msg,
+              ),
+            );
+          } else if (evt.event === "done") {
+            setSessionId(evt.data.session_id);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === placeholderId ? evt.data.message : msg,
+              ),
+            );
+          } else if (evt.event === "error") {
+            throw new Error(evt.data.error);
+          }
+        },
+      });
+    } catch (error) {
+      try {
+        const result = await chat({ query: text, sessionId, ticker, startDate, endDate });
+        setSessionId(result.session_id);
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === placeholderId ? result.message : msg)),
+        );
+      } catch (fallbackError) {
+        const message =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Unknown error occurred";
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === placeholderId
+              ? {
+                  ...msg,
+                  content: `Sorry—failed to reach the agent. ${message}`,
+                }
+              : msg,
+          ),
+        );
+      }
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const backgroundGrid = useMemo(
@@ -101,11 +170,15 @@ export default function Home() {
       </div>
       <ThemeToggle />
       {!isActiveSession ? (
-        <IdleHero
+        <WelcomeScreen
           inputValue={inputValue}
           onInputChange={setInputValue}
           onSubmit={() => handleSend()}
           toggleListening={() => setIsListening((prev) => !prev)}
+          selectedCompanyId={selectedCompanyId}
+          onCompanyChange={setSelectedCompanyId}
+          dateRangeYears={dateRangeYears}
+          onDateRangeChange={setDateRangeYears}
         />
       ) : (
         <ActiveShell

@@ -33,12 +33,18 @@ class ChatRequest(BaseModel):
     """Request model for chatting with the MoatTutor agent."""
     query: str = Field(..., description="User's natural language query", min_length=1)
     session_id: Optional[str] = Field(None, description="Optional session ID for conversation continuity")
+    ticker: Optional[str] = Field(None, description="Optional stock ticker for context (e.g., AAPL)")
+    start_date: Optional[str] = Field(None, description="Optional start date for analysis (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(None, description="Optional end date for analysis (YYYY-MM-DD)")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "query": "Explain why Apple stock moved from 2023-01-01 to 2023-02-28",
-                "session_id": "session-123"
+                "query": "Explain why this stock moved",
+                "session_id": "session-123",
+                "ticker": "AAPL",
+                "start_date": "2022-01-01",
+                "end_date": "2023-12-31"
             }
         }
 
