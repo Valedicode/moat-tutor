@@ -91,6 +91,11 @@ export type StreamEvent =
   | { event: "done"; data: ChatResponse }
   | { event: "error"; data: { error: string } };
 
+// For SSE streaming, we must call the backend directly (not through Next.js proxy)
+// because Next.js rewrites buffer the entire response before forwarding.
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
 export async function chatStream(params: {
   query: string;
   sessionId?: string | null;
@@ -100,7 +105,8 @@ export async function chatStream(params: {
   onEvent: (evt: StreamEvent) => void;
   signal?: AbortSignal;
 }): Promise<void> {
-  const response = await fetch("/api/v1/chat/stream", {
+  // Call backend directly to avoid Next.js proxy buffering
+  const response = await fetch(`${BACKEND_URL}/api/v1/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

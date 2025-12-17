@@ -361,7 +361,7 @@ def stream_agent_messages(query: str, conversation_history: list[dict] = None):
         messages.extend(conversation_history)
     messages.append({"role": "user", "content": query})
     
-    # Prefer async streaming when available in the current LangChain/LangGraph stack.
+
     if hasattr(agent, "astream"):
         async def _agen():
             async for token, metadata in agent.astream(

@@ -3,6 +3,8 @@ Chat endpoints for MoatTutor agent interaction.
 """
 
 import uuid
+import os
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -24,6 +26,11 @@ router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 # with summarization middleware for smarter context management
 # See: https://docs.langchain.com/oss/langchain/short-term-memory
 MAX_HISTORY_MESSAGES = 50
+
+# Optional tiny delay between SSE delta chunks (ms) to give UI a perceivable stream.
+# Default 10ms. Set to 0 to push every token immediately.
+STREAM_TOKEN_DELAY_MS = int(os.getenv("STREAM_TOKEN_DELAY_MS", "0"))
+STREAM_TOKEN_DELAY_SEC = max(0.0, STREAM_TOKEN_DELAY_MS / 1000.0)
 
 
 def _build_enhanced_query(query: str, ticker: Optional[str], start_date: Optional[str], end_date: Optional[str]) -> str:
@@ -190,7 +197,7 @@ async def chat_stream(
         return f"event: {event}\ndata: {json.dumps(data_obj, ensure_ascii=False)}\n\n"
 
     async def event_generator():
-        full_text_parts = []
+        full_text_parts: list[str] = []
         try:
             # Send meta first so client can persist session immediately
             yield _sse("meta", {"session_id": session_id, "message_id": assistant_message_id})
@@ -219,6 +226,8 @@ async def chat_stream(
                         continue
                     full_text_parts.append(delta)
                     yield _sse("delta", {"delta": delta})
+                    if STREAM_TOKEN_DELAY_SEC > 0:
+                        await asyncio.sleep(STREAM_TOKEN_DELAY_SEC)
             else:
                 for token, metadata in stream_iter:
                     delta = _extract_text_delta(token)
@@ -226,6 +235,8 @@ async def chat_stream(
                         continue
                     full_text_parts.append(delta)
                     yield _sse("delta", {"delta": delta})
+                    if STREAM_TOKEN_DELAY_SEC > 0:
+                        await asyncio.sleep(STREAM_TOKEN_DELAY_SEC)
 
             full_text = "".join(full_text_parts).strip()
 
@@ -274,6 +285,33 @@ async def chat_stream(
 
     return StreamingResponse(
         event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/stream-test")
+async def stream_test():
+    """
+    Diagnostic endpoint to test SSE streaming without LLM.
+    
+    Visit /api/v1/chat/stream-test in the browser or curl to verify
+    that chunked streaming actually works from the backend.
+    """
+    import time
+    
+    async def test_generator():
+        for i in range(10):
+            yield f"data: chunk {i + 1} of 10\n\n"
+            await asyncio.sleep(0.3)  # 300ms delay between chunks
+        yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(
+        test_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
