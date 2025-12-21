@@ -9,7 +9,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.agent.moat_tutor import get_stock_prices, get_stock_time_series, get_moat_characteristics
+from agent.moat_tutor import get_stock_prices, get_stock_time_series, get_moat_characteristics
 
 print("=" * 80)
 print("Testing Agent Tools with Real Data")

@@ -19,7 +19,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
-from backend.services.stock_data import get_stock_data_service
+from services.stock_data import get_stock_data_service
 
 # Load environment variables
 load_dotenv()
