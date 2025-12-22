@@ -251,6 +251,142 @@ class StockDataService:
         
         return movements
     
+    def _determine_interval(self, start_date: str, end_date: str) -> str:
+        """
+        Determine optimal time interval based on date range.
+        
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            
+        Returns:
+            Pandas resample frequency string ('D', 'W', or 'ME')
+        """
+        start = pd.to_datetime(start_date)
+        end = pd.to_datetime(end_date)
+        days = (end - start).days
+        
+        if days <= 90:  # Less than 3 months
+            return 'D'  # Daily
+        elif days <= 730:  # Less than 2 years
+            return 'W'  # Weekly (Monday)
+        else:
+            return 'ME'  # Monthly (end of month)
+    
+    def get_chart_data(
+        self,
+        ticker: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        interval: str = 'auto'
+    ) -> dict[str, Any]:
+        """
+        Get chart-ready OHLCV data with adaptive interval resampling.
+        
+        This method is optimized for frontend charting libraries. It automatically
+        determines the best time interval based on the date range to balance
+        detail and performance.
+        
+        Interval rules:
+        - Daily (D): < 3 months (60-75 points)
+        - Weekly (W): 3 months to 2 years (52 points/year)
+        - Monthly (ME): > 2 years (12 points/year)
+        
+        Args:
+            ticker: Stock ticker symbol
+            start_date: Start date in YYYY-MM-DD format (optional)
+            end_date: End date in YYYY-MM-DD format (optional)
+            interval: Time interval ('D', 'W', 'ME', or 'auto' for adaptive)
+            
+        Returns:
+            Dictionary with chart data ready for JSON serialization
+            
+        Raises:
+            FileNotFoundError: If ticker data is not available
+            ValueError: If date range is invalid
+        """
+        # Get price data
+        df = self.get_price_data(ticker, start_date, end_date)
+        
+        if df.empty:
+            return {
+                "error": "No data available for the specified date range",
+                "ticker": ticker.upper(),
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        
+        # Determine interval if auto
+        actual_start = str(df.index[0].date())
+        actual_end = str(df.index[-1].date())
+        
+        if interval == 'auto':
+            interval = self._determine_interval(actual_start, actual_end)
+        
+        # Validate interval
+        valid_intervals = ['D', 'W', 'ME', 'M']  # 'M' kept for backward compatibility
+        if interval not in valid_intervals:
+            raise ValueError(f"Invalid interval '{interval}'. Must be one of {valid_intervals} or 'auto'")
+        
+        # Convert deprecated 'M' to 'ME'
+        if interval == 'M':
+            interval = 'ME'
+        
+        # Resample data using OHLC aggregation
+        try:
+            resampled = df.resample(interval).agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()  # Remove rows where all values are NaN
+            
+            # If adj_close exists, include it
+            if 'adj_close' in df.columns:
+                adj_resampled = df['adj_close'].resample(interval).last()
+                resampled['adj_close'] = adj_resampled
+            
+        except Exception as e:
+            return {
+                "error": f"Error resampling data: {str(e)}",
+                "ticker": ticker.upper()
+            }
+        
+        if resampled.empty:
+            return {
+                "error": "No data after resampling",
+                "ticker": ticker.upper(),
+                "interval": interval
+            }
+        
+        # Convert to JSON-serializable format
+        result = {
+            "ticker": ticker.upper(),
+            "interval": interval,
+            "interval_display": {
+                'D': 'Daily',
+                'W': 'Weekly',
+                'ME': 'Monthly',
+                'M': 'Monthly'  # Backward compatibility
+            }[interval],
+            "start_date": actual_start,
+            "end_date": actual_end,
+            "data_points": len(resampled),
+            "dates": [d.isoformat() for d in resampled.index],
+            "open": [round(v, 2) for v in resampled['open'].tolist()],
+            "high": [round(v, 2) for v in resampled['high'].tolist()],
+            "low": [round(v, 2) for v in resampled['low'].tolist()],
+            "close": [round(v, 2) for v in resampled['close'].tolist()],
+            "volume": [int(v) for v in resampled['volume'].tolist()],
+        }
+        
+        # Add adj_close if available
+        if 'adj_close' in resampled.columns:
+            result['adj_close'] = [round(v, 2) for v in resampled['adj_close'].tolist()]
+        
+        return result
+    
     def available_tickers(self) -> list[str]:
         """Get list of available tickers from CSV files."""
         csv_files = self.data_dir.glob("*.csv")
