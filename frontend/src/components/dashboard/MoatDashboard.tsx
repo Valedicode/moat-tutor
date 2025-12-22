@@ -12,13 +12,6 @@ interface MoatDashboardProps {
 
 // Mock MOAT scores for different companies
 const MOCK_MOAT_SCORES: Record<string, MoatScores> = {
-  AAPL: {
-    networkEffects: 4.8,
-    switchingCosts: 4.5,
-    intangibleAssets: 4.9,
-    costAdvantages: 3.8,
-    efficientScale: 3.5,
-  },
   NVDA: {
     networkEffects: 4.2,
     switchingCosts: 3.8,
@@ -26,12 +19,61 @@ const MOCK_MOAT_SCORES: Record<string, MoatScores> = {
     costAdvantages: 4.0,
     efficientScale: 3.2,
   },
+  AAPL: {
+    networkEffects: 4.8,
+    switchingCosts: 4.5,
+    intangibleAssets: 4.9,
+    costAdvantages: 3.8,
+    efficientScale: 3.5,
+  },
   MSFT: {
     networkEffects: 4.7,
     switchingCosts: 4.6,
     intangibleAssets: 4.5,
     costAdvantages: 4.0,
     efficientScale: 3.9,
+  },
+  AVGO: {
+    networkEffects: 3.5,
+    switchingCosts: 4.0,
+    intangibleAssets: 4.2,
+    costAdvantages: 3.8,
+    efficientScale: 3.3,
+  },
+  ORCL: {
+    networkEffects: 3.8,
+    switchingCosts: 4.4,
+    intangibleAssets: 4.0,
+    costAdvantages: 3.5,
+    efficientScale: 3.7,
+  },
+  AMD: {
+    networkEffects: 3.2,
+    switchingCosts: 3.0,
+    intangibleAssets: 4.0,
+    costAdvantages: 3.4,
+    efficientScale: 2.9,
+  },
+  CSCO: {
+    networkEffects: 4.0,
+    switchingCosts: 4.2,
+    intangibleAssets: 3.8,
+    costAdvantages: 3.6,
+    efficientScale: 3.5,
+  },
+  PLTR: {
+    networkEffects: 3.5,
+    switchingCosts: 3.7,
+    intangibleAssets: 4.5,
+    costAdvantages: 3.0,
+    efficientScale: 3.2,
+  },
+  MU: {
+    networkEffects: 2.8,
+    switchingCosts: 2.5,
+    intangibleAssets: 3.5,
+    costAdvantages: 3.8,
+    efficientScale: 3.0,
   },
   GOOGL: {
     networkEffects: 4.9,
