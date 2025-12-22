@@ -1,7 +1,9 @@
 """
 Stock Data Service
 
-Handles loading and processing historical stock price data from CSV files.
+Handles loading and processing historical stock price data.
+Primary source: yfinance API with caching
+Fallback: CSV files in backend/data/
 """
 
 from __future__ import annotations
@@ -12,6 +14,12 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+from services.yfinance_provider import (
+    fetch_price_data,
+    is_ticker_supported,
+    get_supported_tickers,
+)
 
 
 # Path to data directory
@@ -50,37 +58,81 @@ class StockDataService:
         
         raise FileNotFoundError(f"No CSV file found for ticker {ticker}")
     
-    def load_ticker_data(self, ticker: str) -> pd.DataFrame:
+    def load_ticker_data(
+        self,
+        ticker: str,
+        start_date: str = "2020-01-01",
+        end_date: str = "2025-12-31"
+    ) -> pd.DataFrame:
         """
-        Load historical data for a ticker from CSV.
+        Load historical data for a ticker.
+        
+        Primary source: yfinance API (with disk caching)
+        Fallback: CSV files in backend/data/
         
         Args:
             ticker: Stock ticker symbol
+            start_date: Start date in YYYY-MM-DD format (default: 2020-01-01)
+            end_date: End date in YYYY-MM-DD format (default: 2025-12-31)
             
         Returns:
             DataFrame with date as index and OHLCV columns
         """
-        # Check cache first
         ticker_upper = ticker.upper()
-        if ticker_upper in self._cache:
-            return self._cache[ticker_upper].copy()
         
-        # Load from CSV
-        csv_path = self._get_csv_path(ticker)
-        df = pd.read_csv(csv_path)
+        # Check memory cache first (for repeated calls in same session)
+        cache_key = f"{ticker_upper}_{start_date}_{end_date}"
+        if cache_key in self._cache:
+            return self._cache[cache_key].copy()
         
-        # Standardize column names
-        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+        # Try yfinance first (preferred source)
+        if is_ticker_supported(ticker):
+            try:
+                df = fetch_price_data(
+                    ticker=ticker,
+                    start_date=start_date,
+                    end_date=end_date,
+                    interval="1d",
+                    use_cache=True
+                )
+                
+                # Cache in memory
+                self._cache[cache_key] = df.copy()
+                return df
+                
+            except Exception as e:
+                print(f"Warning: yfinance failed for {ticker_upper}, trying CSV fallback: {e}")
         
-        # Convert date to datetime and set as index
-        df['date'] = pd.to_datetime(df['date'])
-        df = df.sort_values('date')
-        df.set_index('date', inplace=True)
-        
-        # Cache it
-        self._cache[ticker_upper] = df.copy()
-        
-        return df
+        # Fallback to CSV files
+        try:
+            csv_path = self._get_csv_path(ticker)
+            df = pd.read_csv(csv_path)
+            
+            # Standardize column names
+            df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+            
+            # Convert date to datetime and set as index
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date')
+            df.set_index('date', inplace=True)
+            
+            # Filter by date range
+            if start_date:
+                df = df[df.index >= pd.to_datetime(start_date)]
+            if end_date:
+                df = df[df.index <= pd.to_datetime(end_date)]
+            
+            # Cache in memory
+            self._cache[cache_key] = df.copy()
+            
+            print(f"[CSV] Loaded {ticker_upper} from CSV fallback ({len(df)} rows)")
+            return df
+            
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"No data source available for ticker {ticker}. "
+                f"Supported yfinance tickers: {', '.join(sorted(get_supported_tickers().keys()))}"
+            )
     
     def get_price_data(
         self,
@@ -388,9 +440,18 @@ class StockDataService:
         return result
     
     def available_tickers(self) -> list[str]:
-        """Get list of available tickers from CSV files."""
+        """Get list of available tickers from yfinance whitelist and CSV files."""
+        # Get yfinance supported tickers
+        yfinance_tickers = set(get_supported_tickers().keys())
+        
+        # Get CSV tickers (fallback)
         csv_files = self.data_dir.glob("*.csv")
-        return [f.stem.upper() for f in csv_files]
+        csv_tickers = {f.stem.upper() for f in csv_files if f.name != "cache"}
+        
+        # Combine both sources (yfinance takes priority)
+        all_tickers = yfinance_tickers | csv_tickers
+        
+        return sorted(list(all_tickers))
 
 
 # Global instance
