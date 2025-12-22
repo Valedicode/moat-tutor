@@ -20,6 +20,22 @@ export type SessionInfo = {
   last_activity: string;
 };
 
+export type ChartDataResponse = {
+  ticker: string;
+  interval: string;
+  interval_display: string;
+  start_date: string;
+  end_date: string;
+  data_points: number;
+  dates: string[];
+  open: number[];
+  high: number[];
+  low: number[];
+  close: number[];
+  volume: number[];
+  adj_close?: number[];
+};
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   try {
@@ -194,6 +210,30 @@ export async function chatStream(params: {
         console.warn("Failed to parse SSE frame:", e);
       }
     }
+  }
+}
+
+export async function getChartData(params: {
+  ticker: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  interval?: "auto" | "D" | "W" | "ME" | "M";
+  signal?: AbortSignal;
+}): Promise<ChartDataResponse> {
+  try {
+    const queryParams = new URLSearchParams();
+    if (params.startDate) queryParams.set("start_date", params.startDate);
+    if (params.endDate) queryParams.set("end_date", params.endDate);
+    if (params.interval) queryParams.set("interval", params.interval);
+
+    const url = `/api/v1/charts/${params.ticker}${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+    
+    return await fetchJson<ChartDataResponse>(url, {
+      method: "GET",
+      signal: params.signal,
+    });
+  } catch (error) {
+    throw new Error(`Chart data request failed: ${toErrorMessage(error)}`);
   }
 }
 

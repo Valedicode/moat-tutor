@@ -10,6 +10,9 @@ type ActiveShellProps = {
   onSubmit: (value?: string) => void;
   chatScrollRef: React.MutableRefObject<HTMLDivElement | null>;
   toggleListening: () => void;
+  ticker?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
 };
 
 export function ActiveShell({
@@ -19,6 +22,9 @@ export function ActiveShell({
   onSubmit,
   chatScrollRef,
   toggleListening,
+  ticker,
+  startDate,
+  endDate,
 }: ActiveShellProps) {
   const [showPanel, setShowPanel] = useState(false);
 
@@ -99,7 +105,7 @@ export function ActiveShell({
       >
         {showPanel && (
           <div className="slide-in-panel w-full">
-            <MoatDashboard />
+            <MoatDashboard ticker={ticker} startDate={startDate} endDate={endDate} />
           </div>
         )}
       </section>
