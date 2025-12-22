@@ -90,6 +90,47 @@ class LearningOption(BaseModel):
         }
 
 
+class ChartDataResponse(BaseModel):
+    """
+    Chart-ready OHLCV data with adaptive interval resampling.
+    
+    This response is optimized for frontend charting libraries like Recharts, D3, or Chart.js.
+    The interval is automatically determined based on the date range to balance detail and performance.
+    """
+    ticker: str = Field(..., description="Stock ticker symbol")
+    interval: str = Field(..., description="Time interval used ('D', 'W', or 'M')")
+    interval_display: str = Field(..., description="Human-readable interval (Daily, Weekly, Monthly)")
+    start_date: str = Field(..., description="Actual start date of returned data (YYYY-MM-DD)")
+    end_date: str = Field(..., description="Actual end date of returned data (YYYY-MM-DD)")
+    data_points: int = Field(..., description="Number of data points returned")
+    dates: List[str] = Field(..., description="ISO format dates for each data point")
+    open: List[float] = Field(..., description="Opening prices")
+    high: List[float] = Field(..., description="High prices")
+    low: List[float] = Field(..., description="Low prices")
+    close: List[float] = Field(..., description="Closing prices")
+    volume: List[int] = Field(..., description="Trading volumes")
+    adj_close: Optional[List[float]] = Field(None, description="Adjusted closing prices (if available)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "ticker": "AAPL",
+                "interval": "W",
+                "interval_display": "Weekly",
+                "start_date": "2023-01-01",
+                "end_date": "2023-12-31",
+                "data_points": 52,
+                "dates": ["2023-01-02T00:00:00", "2023-01-09T00:00:00"],
+                "open": [130.28, 132.04],
+                "high": [133.41, 135.92],
+                "low": [129.89, 131.66],
+                "close": [132.31, 135.45],
+                "volume": [654321000, 712345000],
+                "adj_close": [132.31, 135.45]
+            }
+        }
+
+
 class ParsedAnalysis(BaseModel):
     """
     Structured analysis parsed from the agent's response.
