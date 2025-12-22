@@ -1,6 +1,104 @@
 "use client";
 
-export function MoatDashboard() {
+import { useEffect, useState } from "react";
+import { StockChart, MoatRadar, type MoatScores } from "@/components/charts";
+import { getChartData, type ChartDataResponse } from "@/lib/moatTutorApi";
+
+interface MoatDashboardProps {
+  ticker?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+// Mock MOAT scores for different companies
+const MOCK_MOAT_SCORES: Record<string, MoatScores> = {
+  AAPL: {
+    networkEffects: 4.8,
+    switchingCosts: 4.5,
+    intangibleAssets: 4.9,
+    costAdvantages: 3.8,
+    efficientScale: 3.5,
+  },
+  NVDA: {
+    networkEffects: 4.2,
+    switchingCosts: 3.8,
+    intangibleAssets: 4.7,
+    costAdvantages: 4.0,
+    efficientScale: 3.2,
+  },
+  MSFT: {
+    networkEffects: 4.7,
+    switchingCosts: 4.6,
+    intangibleAssets: 4.5,
+    costAdvantages: 4.0,
+    efficientScale: 3.9,
+  },
+  GOOGL: {
+    networkEffects: 4.9,
+    switchingCosts: 4.0,
+    intangibleAssets: 4.8,
+    costAdvantages: 4.3,
+    efficientScale: 4.1,
+  },
+};
+
+// Default scores if ticker not found
+const DEFAULT_SCORES: MoatScores = {
+  networkEffects: 3.0,
+  switchingCosts: 3.0,
+  intangibleAssets: 3.0,
+  costAdvantages: 3.0,
+  efficientScale: 3.0,
+};
+
+export function MoatDashboard({
+  ticker = "NVDA",
+  startDate = "2023-01-01",
+  endDate = "2023-12-31",
+}: MoatDashboardProps) {
+  const [chartData, setChartData] = useState<ChartDataResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Get MOAT scores for the selected ticker
+  const moatScores = ticker ? (MOCK_MOAT_SCORES[ticker] || DEFAULT_SCORES) : DEFAULT_SCORES;
+
+  useEffect(() => {
+    const loadChartData = async () => {
+      if (!ticker) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const data = await getChartData({
+          ticker,
+          startDate,
+          endDate,
+          interval: "auto",
+        });
+        setChartData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load chart data");
+        console.error("Chart data error:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadChartData();
+  }, [ticker, startDate, endDate]);
+
+  // Calculate price change
+  const priceChange = chartData
+    ? ((chartData.close[chartData.close.length - 1] - chartData.close[0]) /
+        chartData.close[0]) *
+      100
+    : 0;
+
   return (
     <div
       className="flex h-full flex-col gap-6 rounded-[36px] border p-6"
@@ -12,7 +110,7 @@ export function MoatDashboard() {
       {/* Header Alert */}
       <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
         <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--risk)" }}>
-          Moat Erosion Alert: Regulatory Risk
+          {ticker ? `${ticker} Price Analysis` : "Select a company to view analysis"}
         </h2>
       </div>
 
@@ -20,167 +118,126 @@ export function MoatDashboard() {
       <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Stock Chart */}
         <div className="flex flex-col gap-3">
-          <div className="relative h-64 rounded-xl border p-4" style={{ borderColor: "var(--border)", backgroundColor: "var(--background)" }}>
-            <svg viewBox="0 0 400 200" className="h-full w-full" preserveAspectRatio="none">
-              <defs>
-                {/* Gradient for area fill */}
-                <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="var(--risk)" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="var(--risk)" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              
-              {/* Grid lines */}
-              <line x1="0" y1="40" x2="400" y2="40" stroke="currentColor" strokeWidth="0.5" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              <line x1="0" y1="80" x2="400" y2="80" stroke="currentColor" strokeWidth="0.5" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              <line x1="0" y1="120" x2="400" y2="120" stroke="currentColor" strokeWidth="0.5" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              <line x1="0" y1="160" x2="400" y2="160" stroke="currentColor" strokeWidth="0.5" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              
-              {/* Candlestick chart */}
-              {/* Green candles - before drop */}
-              <rect x="20" y="65" width="8" height="15" fill="#10b981" />
-              <line x1="24" y1="60" x2="24" y2="85" stroke="#10b981" strokeWidth="1.5" />
-              
-              <rect x="40" y="55" width="8" height="20" fill="#10b981" />
-              <line x1="44" y1="50" x2="44" y2="80" stroke="#10b981" strokeWidth="1.5" />
-              
-              <rect x="60" y="50" width="8" height="18" fill="#10b981" />
-              <line x1="64" y1="45" x2="64" y2="73" stroke="#10b981" strokeWidth="1.5" />
-              
-              <rect x="80" y="48" width="8" height="22" fill="#10b981" />
-              <line x1="84" y1="42" x2="84" y2="75" stroke="#10b981" strokeWidth="1.5" />
-              
-              {/* Red candles - the drop */}
-              <rect x="100" y="70" width="8" height="30" fill="#ef4444" />
-              <line x1="104" y1="65" x2="104" y2="105" stroke="#ef4444" strokeWidth="1.5" />
-              
-              <rect x="120" y="85" width="8" height="35" fill="#ef4444" />
-              <line x1="124" y1="80" x2="124" y2="125" stroke="#ef4444" strokeWidth="1.5" />
-              
-              <rect x="140" y="95" width="8" height="28" fill="#ef4444" />
-              <line x1="144" y1="90" x2="144" y2="128" stroke="#ef4444" strokeWidth="1.5" />
-              
-              {/* Recovery attempts */}
-              <rect x="160" y="105" width="8" height="15" fill="#10b981" />
-              <line x1="164" y1="100" x2="164" y2="125" stroke="#10b981" strokeWidth="1.5" />
-              
-              <rect x="180" y="100" width="8" height="12" fill="#ef4444" />
-              <line x1="184" y1="95" x2="184" y2="117" stroke="#ef4444" strokeWidth="1.5" />
-              
-              <rect x="200" y="108" width="8" height="10" fill="#10b981" />
-              <line x1="204" y1="103" x2="204" y2="123" stroke="#10b981" strokeWidth="1.5" />
-              
-              {/* Price line overlay */}
-              <polyline
-                points="24,72 44,65 64,59 84,57 104,82 124,107 144,109 164,112 184,106 204,113"
-                fill="none"
-                stroke="var(--risk)"
-                strokeWidth="2"
-                opacity="0.8"
-              />
-              
-              {/* Area fill under line */}
-              <polygon
-                points="24,72 44,65 64,59 84,57 104,82 124,107 144,109 164,112 184,106 204,113 204,200 24,200"
-                fill="url(#priceGradient)"
-              />
-              
-              {/* Vertical marker line for event */}
-              <line x1="104" y1="0" x2="104" y2="200" stroke="var(--risk)" strokeWidth="2" strokeDasharray="4 4" opacity="0.5" />
-            </svg>
-            
-            {/* Y-axis labels overlay */}
-            <div className="absolute left-2 top-4 flex flex-col justify-between" style={{ height: "calc(100% - 3rem)" }}>
-              <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>$500</span>
-              <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>$450</span>
-              <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>$400</span>
-            </div>
-            
-            {/* Bottom info */}
-            <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between">
-              <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>JAN 3, 2024</span>
-              <span className="text-xs font-semibold" style={{ color: "var(--risk)" }}>▼ -5.6%</span>
-            </div>
+          <div
+            className="relative rounded-xl border p-4"
+            style={{
+              borderColor: "var(--border)",
+              backgroundColor: "var(--background)",
+              minHeight: "300px",
+            }}
+          >
+            {isLoading && (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-center">
+                  <div
+                    className="mb-2 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"
+                    style={{ color: "var(--accent)" }}
+                  />
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                    Loading chart data...
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-center">
+                  <p className="text-sm font-semibold" style={{ color: "var(--risk)" }}>
+                    Error loading chart
+                  </p>
+                  <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                    {error}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!isLoading && !error && chartData && (
+              <StockChart data={chartData} showVolume={true} showArea={true} height={280} />
+            )}
+
+            {!isLoading && !error && !chartData && !ticker && (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                  Select a company to view price chart
+                </p>
+              </div>
+            )}
           </div>
-          
-          <div className="rounded-xl border p-3 text-center" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
-            <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
-              Government announce chip export restrictions
-            </p>
-          </div>
+
+          {chartData && (
+            <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+                    Period Return
+                  </span>
+                  <p
+                    className="text-lg font-bold"
+                    style={{
+                      color: priceChange >= 0 ? "#10b981" : "#ef4444",
+                    }}
+                  >
+                    {priceChange >= 0 ? "▲" : "▼"} {Math.abs(priceChange).toFixed(2)}%
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+                    Price Range
+                  </span>
+                  <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    ${Math.min(...chartData.low).toFixed(2)} - $
+                    {Math.max(...chartData.high).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Moat Radar */}
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border p-6" style={{ borderColor: "var(--border)", backgroundColor: "var(--background)" }}>
-          <div className="relative h-48 w-48">
-            {/* Pentagon shape - simplified representation */}
-            <svg viewBox="0 0 200 200" className="h-full w-full">
-              {/* Background grid circles */}
-              <circle cx="100" cy="100" r="80" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              <circle cx="100" cy="100" r="60" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              <circle cx="100" cy="100" r="40" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              <circle cx="100" cy="100" r="20" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.1" style={{ color: "var(--text-tertiary)" }} />
-              
-              {/* Pentagon data visualization */}
-              <polygon
-                points="100,20 175,65 155,145 45,145 25,65"
-                fill="url(#radarGradient)"
-                stroke="var(--accent)"
-                strokeWidth="2"
-                opacity="0.6"
-              />
-              
-              {/* Gradient definition */}
-              <defs>
-                <linearGradient id="radarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#10b981" />
-                  <stop offset="25%" stopColor="#84cc16" />
-                  <stop offset="50%" stopColor="#eab308" />
-                  <stop offset="75%" stopColor="#f97316" />
-                  <stop offset="100%" stopColor="#ef4444" />
-                </linearGradient>
-              </defs>
-              
-              {/* Center point */}
-              <circle cx="100" cy="100" r="4" fill="var(--accent)" />
-            </svg>
-          </div>
-          
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-[0.3em]" style={{ color: "var(--text-secondary)" }}>
-              Moat Radar
-            </p>
-          </div>
-          
-          {/* Legend */}
-          <div className="flex flex-wrap justify-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#10b981" }}></div>
-              <span style={{ color: "var(--text-tertiary)" }}>Network Effect</span>
+        <div
+          className="flex flex-col items-center justify-center gap-4 rounded-xl border p-6"
+          style={{
+            borderColor: "var(--border)",
+            backgroundColor: "var(--background)",
+            minHeight: "300px",
+          }}
+        >
+          {ticker ? (
+            <MoatRadar scores={moatScores} size={280} />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                Select a company to view MOAT analysis
+              </p>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#eab308" }}></div>
-              <span style={{ color: "var(--text-tertiary)" }}>Intangible Assets</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: "#ef4444" }}></div>
-              <span style={{ color: "var(--text-tertiary)" }}>Cost Advantage</span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
       {/* AI Explanation */}
       <div className="rounded-2xl border p-5" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
         <h3 className="text-xs font-semibold uppercase tracking-[0.3em]" style={{ color: "var(--text-secondary)" }}>
-          AI-Powered Explanation
+          Price Movement Summary
         </h3>
         <p className="mt-3 text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
-          On January 3, 2024, Nvidia's stock price dropped due to new government regulations raising chip exports. This erodes{" "}
-          <span className="font-semibold" style={{ color: "var(--accent)" }}>
-            Nvidia's Intangible Assets
-          </span>{" "}
-          moats, regulatory licenses, by limiting access to key markets.
+          {chartData ? (
+            <>
+              {ticker} {priceChange >= 0 ? "gained" : "declined"}{" "}
+              <span className="font-semibold" style={{ color: priceChange >= 0 ? "#10b981" : "#ef4444" }}>
+                {Math.abs(priceChange).toFixed(2)}%
+              </span>{" "}
+              from {new Date(chartData.start_date).toLocaleDateString()} to{" "}
+              {new Date(chartData.end_date).toLocaleDateString()}, moving from $
+              {chartData.close[0].toFixed(2)} to ${chartData.close[chartData.close.length - 1].toFixed(2)}.
+              The stock reached a high of ${Math.max(...chartData.high).toFixed(2)} and a low of $
+              {Math.min(...chartData.low).toFixed(2)} during this period.
+            </>
+          ) : (
+            "Select a company and date range to view price movement analysis."
+          )}
         </p>
       </div>
     </div>

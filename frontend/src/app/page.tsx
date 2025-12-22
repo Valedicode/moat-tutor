@@ -188,6 +188,9 @@ export default function Home() {
           onSubmit={handleSend}
           chatScrollRef={chatScrollRef}
           toggleListening={() => setIsListening((prev) => !prev)}
+          ticker={ticker}
+          startDate={startDate}
+          endDate={endDate}
         />
       )}
     </main>
