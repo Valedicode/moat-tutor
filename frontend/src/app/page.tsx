@@ -17,7 +17,8 @@ export default function Home() {
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [dateRangeYears, setDateRangeYears] = useState<number>(1);
+  const [startYear, setStartYear] = useState<number>(2024);
+  const [endYear, setEndYear] = useState<number>(2025);
   const [visualizerLevels, setVisualizerLevels] = useState<number[]>(
     () => Array.from({ length: 16 }, () => 10),
   );
@@ -31,8 +32,7 @@ export default function Home() {
     ? availableCompanies.find((c) => c.id === selectedCompanyId)
     : null;
   const ticker = selectedCompany?.ticker ?? null;
-  const endYear = 2023;
-  const startDate = ticker ? `${endYear - dateRangeYears}-01-01` : null;
+  const startDate = ticker ? `${startYear}-01-01` : null;
   const endDate = ticker ? `${endYear}-12-31` : null;
 
   useEffect(() => {
@@ -177,8 +177,10 @@ export default function Home() {
           toggleListening={() => setIsListening((prev) => !prev)}
           selectedCompanyId={selectedCompanyId}
           onCompanyChange={setSelectedCompanyId}
-          dateRangeYears={dateRangeYears}
-          onDateRangeChange={setDateRangeYears}
+          startYear={startYear}
+          endYear={endYear}
+          onStartYearChange={setStartYear}
+          onEndYearChange={setEndYear}
         />
       ) : (
         <ActiveShell
