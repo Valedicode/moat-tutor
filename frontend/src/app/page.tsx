@@ -13,15 +13,10 @@ import { availableCompanies } from "@/constants/companies";
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [isListening, setIsListening] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [dateRangeYears, setDateRangeYears] = useState<number>(1);
-  const [visualizerLevels, setVisualizerLevels] = useState<number[]>(
-    () => Array.from({ length: 16 }, () => 10),
-  );
-  const streamRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const isActiveSession = messages.length > 0;
@@ -34,29 +29,6 @@ export default function Home() {
   const endYear = 2023;
   const startDate = ticker ? `${endYear - dateRangeYears}-01-01` : null;
   const endDate = ticker ? `${endYear}-12-31` : null;
-
-  useEffect(() => {
-    if (!isListening) {
-      if (streamRef.current) {
-        clearInterval(streamRef.current);
-        streamRef.current = null;
-      }
-      return;
-    }
-
-    streamRef.current = setInterval(() => {
-      setVisualizerLevels((levels) =>
-        levels.map(() => 6 + Math.random() * 38),
-      );
-    }, 150);
-
-    return () => {
-      if (streamRef.current) {
-        clearInterval(streamRef.current);
-        streamRef.current = null;
-      }
-    };
-  }, [isListening]);
 
   useEffect(() => {
     if (!chatScrollRef.current) return;
@@ -174,7 +146,6 @@ export default function Home() {
           inputValue={inputValue}
           onInputChange={setInputValue}
           onSubmit={() => handleSend()}
-          toggleListening={() => setIsListening((prev) => !prev)}
           selectedCompanyId={selectedCompanyId}
           onCompanyChange={setSelectedCompanyId}
           dateRangeYears={dateRangeYears}
@@ -187,7 +158,6 @@ export default function Home() {
           onInputChange={setInputValue}
           onSubmit={handleSend}
           chatScrollRef={chatScrollRef}
-          toggleListening={() => setIsListening((prev) => !prev)}
         />
       )}
     </main>
