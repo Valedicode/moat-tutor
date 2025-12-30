@@ -47,4 +47,4 @@ backend/.mypy_cache/
 backend/.ruff_cache/
 
 # Documentation (local reading only for planning)
-backend/documentation/
+documentation/
