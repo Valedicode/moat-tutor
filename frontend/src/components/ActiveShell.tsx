@@ -9,7 +9,6 @@ type ActiveShellProps = {
   onInputChange: (value: string) => void;
   onSubmit: (value?: string) => void;
   chatScrollRef: React.MutableRefObject<HTMLDivElement | null>;
-  toggleListening: () => void;
 };
 
 export function ActiveShell({
@@ -18,7 +17,6 @@ export function ActiveShell({
   onInputChange,
   onSubmit,
   chatScrollRef,
-  toggleListening,
 }: ActiveShellProps) {
   const [showPanel, setShowPanel] = useState(false);
 
@@ -84,7 +82,6 @@ export function ActiveShell({
             value={inputValue}
             onChange={onInputChange}
             onSubmit={() => onSubmit()}
-            onToggleMic={toggleListening}
             variant="active"
           />
         </div>

@@ -10,7 +10,6 @@ type WelcomeScreenProps = {
   inputValue: string;
   onInputChange: (value: string) => void;
   onSubmit: () => void;
-  toggleListening: () => void;
   selectedCompanyId: string | null;
   onCompanyChange: (companyId: string | null) => void;
   dateRangeYears: number;
@@ -21,7 +20,6 @@ export function WelcomeScreen({
   inputValue,
   onInputChange,
   onSubmit,
-  toggleListening,
   selectedCompanyId,
   onCompanyChange,
   dateRangeYears,
@@ -66,7 +64,6 @@ export function WelcomeScreen({
           value={inputValue}
           onChange={onInputChange}
           onSubmit={onSubmit}
-          onToggleMic={toggleListening}
           variant="idle"
           placeholder="Ask any question"
         />
