@@ -47,7 +47,7 @@ backend/.mypy_cache/
 backend/.ruff_cache/
 
 # Documentation (local reading only for planning)
-backend/documentation/
+documentation/
 
 # Data files (keep structure, exclude actual data)
 backend/data/*.xlsx
