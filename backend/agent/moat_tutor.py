@@ -20,6 +20,7 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
 from services.stock_data import get_stock_data_service
+from services.news_provider import get_news_for_agent
 
 # Load environment variables
 load_dotenv()
@@ -172,6 +173,10 @@ def get_stock_news(ticker: str, start_date: str, end_date: str) -> str:
     """
     Retrieves financial news articles for a stock ticker within a date range.
     
+    Uses yfinance to fetch real company-specific news articles.
+    Note: yfinance typically provides recent news (last 30 days).
+    Historical news may have limited availability.
+    
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
         start_date: Start date in YYYY-MM-DD format
@@ -180,15 +185,7 @@ def get_stock_news(ticker: str, start_date: str, end_date: str) -> str:
     Returns:
         Formatted string containing news articles with dates and descriptions
     """
-    # TODO: Replace with real FNSPID news data
-    return f"""News for {ticker} from {start_date} to {end_date}:
-    
-1. [2023-01-15] {ticker} announces strong quarterly earnings, beating analyst expectations
-2. [2023-01-20] CEO discusses expansion plans in earnings call
-3. [2023-01-25] New product launch receives positive reviews from industry analysts
-4. [2023-02-01] Regulatory concerns emerge regarding data privacy practices
-5. [2023-02-10] Company announces strategic partnership with major industry player
-"""
+    return get_news_for_agent(ticker, start_date, end_date)
 
 
 @tool
