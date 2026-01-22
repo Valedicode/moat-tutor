@@ -1,10 +1,9 @@
 "use client";
 
 import { ChatInput } from "@/components/chat";
-import { CompanyCard } from "@/components/CompanyCard";
+import { CompanySelector } from "@/components/CompanySelector";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { ExamplePrompts } from "@/components/ExamplePrompts";
-import { availableCompanies } from "@/constants/companies";
 
 type WelcomeScreenProps = {
   inputValue: string;
@@ -12,8 +11,10 @@ type WelcomeScreenProps = {
   onSubmit: () => void;
   selectedCompanyId: string | null;
   onCompanyChange: (companyId: string | null) => void;
-  dateRangeYears: number;
-  onDateRangeChange: (years: number) => void;
+  startYear: number;
+  endYear: number;
+  onStartYearChange: (year: number) => void;
+  onEndYearChange: (year: number) => void;
 };
 
 export function WelcomeScreen({
@@ -22,13 +23,11 @@ export function WelcomeScreen({
   onSubmit,
   selectedCompanyId,
   onCompanyChange,
-  dateRangeYears,
-  onDateRangeChange,
+  startYear,
+  endYear,
+  onStartYearChange,
+  onEndYearChange,
 }: WelcomeScreenProps) {
-  const toggleCompany = (companyId: string) => {
-    onCompanyChange(selectedCompanyId === companyId ? null : companyId);
-  };
-
   return (
     <section className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-5xl flex-col items-center justify-center text-center">
       <p
@@ -67,23 +66,24 @@ export function WelcomeScreen({
           variant="idle"
           placeholder="Ask any question"
         />
-      </div>	
+      </div>
 
-      {/* Company Selection Grid */}
-      <div className="mt-10 grid w-full grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
-        {availableCompanies.map((company) => (
-          <CompanyCard
-            key={company.id}
-            company={company}
-            isSelected={selectedCompanyId === company.id}
-            onToggle={() => toggleCompany(company.id)}
-          />
-        ))}
+      {/* Company Selector - Searchable Dropdown with Card Preview */}
+      <div className="mt-8 w-full">
+        <CompanySelector
+          selectedCompanyId={selectedCompanyId}
+          onCompanyChange={onCompanyChange}
+        />
       </div>
 
       {/* Date Range Picker */}
       <div className="mt-8 w-full max-w-md">
-        <DateRangePicker value={dateRangeYears} onChange={onDateRangeChange} />
+        <DateRangePicker
+          startYear={startYear}
+          endYear={endYear}
+          onStartYearChange={onStartYearChange}
+          onEndYearChange={onEndYearChange}
+        />
       </div>
     </section>
   );
