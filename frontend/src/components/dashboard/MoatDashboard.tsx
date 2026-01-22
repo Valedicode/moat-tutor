@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { StockChart, MoatRadar, type MoatScores } from "@/components/charts";
 import { getChartData, type ChartDataResponse } from "@/lib/moatTutorApi";
+import { availableCompanies } from "@/constants/companies";
 
 interface MoatDashboardProps {
   ticker?: string | null;
@@ -105,6 +106,11 @@ export function MoatDashboard({
   // Get MOAT scores for the selected ticker
   const moatScores = ticker ? (MOCK_MOAT_SCORES[ticker] || DEFAULT_SCORES) : DEFAULT_SCORES;
 
+  // Get company name from ticker
+  const companyName = ticker
+    ? availableCompanies.find((c) => c.ticker === ticker)?.name || ticker
+    : "";
+
   useEffect(() => {
     const loadChartData = async () => {
       if (!ticker) {
@@ -152,7 +158,7 @@ export function MoatDashboard({
       {/* Header Alert */}
       <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
         <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--risk)" }}>
-          {ticker ? `${ticker} Price Analysis` : "Select a company to view analysis"}
+          {ticker ? `${companyName} Price Analysis` : "Select a company to view analysis"}
         </h2>
       </div>
 
@@ -196,7 +202,7 @@ export function MoatDashboard({
             )}
 
             {!isLoading && !error && chartData && (
-              <StockChart data={chartData} showVolume={true} showArea={true} height={280} />
+              <StockChart data={chartData} showVolume={true} height={280} />
             )}
 
             {!isLoading && !error && !chartData && !ticker && (
