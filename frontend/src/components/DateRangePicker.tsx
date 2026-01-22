@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react";
 
 type DateRangePickerProps = {
-  startYear: number; // Start year (2020-2025)
-  endYear: number; // End year (2020-2025)
+  startYear: number; // Start year (2015-2025)
+  endYear: number; // End year (2015-2025)
   onStartYearChange: (year: number) => void;
   onEndYearChange: (year: number) => void;
 };
 
-const MIN_YEAR = 2020;
+const MIN_YEAR = 2015;
 const MAX_YEAR = 2025;
 
 export function DateRangePicker({
@@ -72,7 +72,7 @@ export function DateRangePicker({
           className="text-sm"
           style={{ color: "#595959" }}
         >
-          Select start and end year (2020-2025)
+          Select start and end year (2015-2025)
         </p>
       </div>
 
