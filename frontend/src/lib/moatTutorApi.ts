@@ -5,6 +5,20 @@ export type ChatMessage = {
   timestamp: string;
 };
 
+export type TranslationRequest = {
+  file: File;
+  model?: "whisper-1";
+  response_format?: "json" | "text";
+  prompt?: string;
+  temperature?: number;
+};
+
+export type TranslationResponse = {
+  success: boolean;
+  text?: string | null;
+  message: string;
+};
+
 export type ParsedAnalysis = unknown;
 
 export type ChatResponse = {
@@ -234,6 +248,59 @@ export async function getChartData(params: {
     });
   } catch (error) {
     throw new Error(`Chart data request failed: ${toErrorMessage(error)}`);
+  }
+}
+
+export async function translateAudio(
+  request: TranslationRequest
+): Promise<TranslationResponse> {
+  const formData = new FormData();
+  formData.append("file", request.file);
+
+  if (request.model) {
+    formData.append("model", request.model);
+  }
+  if (request.response_format) {
+    formData.append("response_format", request.response_format);
+  }
+  if (request.prompt) {
+    formData.append("prompt", request.prompt);
+  }
+  if (request.temperature !== undefined) {
+    formData.append("temperature", request.temperature.toString());
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
+
+    const response = await fetch("/api/audio/translate", {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+      // Don't set Content-Type - browser sets it with boundary
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        (errorData as { detail?: string; message?: string }).detail ||
+          (errorData as { detail?: string; message?: string }).message ||
+          "Translation failed"
+      );
+    }
+
+    return (await response.json()) as TranslationResponse;
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === "AbortError") {
+        throw new Error("Translation request timed out after 5 minutes");
+      }
+      throw new Error(`Translation failed: ${error.message}`);
+    }
+    throw new Error("Translation failed: Unknown error");
   }
 }
 
