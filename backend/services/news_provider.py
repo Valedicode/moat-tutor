@@ -1,9 +1,11 @@
 """
 News Data Provider
 
-Fetches financial news articles from Yahoo Finance via yfinance.
-Stores data as JSON files for reproducibility in research experiments.
+Fetches financial news articles from multiple sources:
+1. yfinance (Yahoo Finance) - for recent news (last 30 days)
+2. FNSPID dataset - for historical news (2015-2023)
 
+Stores data as JSON files for reproducibility in research experiments.
 Supports the same whitelist of tech companies as the price provider.
 """
 
@@ -16,6 +18,17 @@ from pathlib import Path
 from typing import Optional
 
 import yfinance as yf
+
+# Import FNSPID retrieval for historical data
+try:
+    from services.fnspid_retrieval import (
+        is_fnspid_data_available,
+        get_relevant_news_passages,
+        get_news_summary,
+    )
+    FNSPID_AVAILABLE = True
+except ImportError:
+    FNSPID_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -389,22 +402,63 @@ def fetch_all_company_news(
 def get_news_for_agent(
     ticker: str,
     start_date: str,
-    end_date: str
+    end_date: str,
+    query: Optional[str] = None
 ) -> str:
     """
     Get formatted news string for the MoatTutor agent.
     
-    This function wraps fetch_company_news and formats the output
-    as a human-readable string suitable for the LLM agent.
+    This function intelligently chooses between:
+    - FNSPID historical data (2015-2023) for older date ranges
+    - yfinance (recent 30 days) for current news
     
     Args:
         ticker: Stock ticker symbol
         start_date: Start date in YYYY-MM-DD format
         end_date: End date in YYYY-MM-DD format
+        query: Optional search query for semantic retrieval (FNSPID only)
         
     Returns:
         Formatted string containing news articles
     """
+    ticker_upper = ticker.upper()
+    
+    # Determine which source to use based on date range
+    try:
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    except ValueError:
+        return f"Error: Invalid date format. Use YYYY-MM-DD."
+    
+    # FNSPID is best for historical data (2015-2023)
+    fnspid_cutoff = datetime(2023, 12, 31)
+    is_historical = end_dt <= fnspid_cutoff
+    
+    # Try FNSPID for historical queries
+    if is_historical and FNSPID_AVAILABLE:
+        if is_fnspid_data_available(ticker_upper):
+            if query:
+                # Semantic search with query
+                return get_relevant_news_passages(
+                    query=query,
+                    ticker=ticker_upper,
+                    start_date=start_date,
+                    end_date=end_date,
+                    top_k=10
+                )
+            else:
+                # Return chronological summary
+                return get_news_summary(
+                    ticker=ticker_upper,
+                    start_date=start_date,
+                    end_date=end_date,
+                    max_articles=20
+                )
+        else:
+            # FNSPID data not yet downloaded
+            logger.info(f"FNSPID data not available for {ticker_upper}, using yfinance")
+    
+    # Fall back to yfinance for recent news or if FNSPID unavailable
     try:
         articles = fetch_company_news(ticker, start_date, end_date)
     except ValueError as e:
@@ -413,9 +467,14 @@ def get_news_for_agent(
         return f"Error fetching news for {ticker}: {e}"
     
     if not articles:
-        return (f"No news articles found for {ticker} between {start_date} and {end_date}.\n"
-                f"Note: yfinance only provides recent news (typically last 30 days). "
-                f"Historical news may not be available.")
+        if is_historical and FNSPID_AVAILABLE:
+            return (f"No news articles found for {ticker} between {start_date} and {end_date}.\n"
+                    f"Historical news is available via FNSPID. Run the pipeline first:\n"
+                    f"  python -m services.fnspid_news_pipeline --tickers {ticker}")
+        else:
+            return (f"No news articles found for {ticker} between {start_date} and {end_date}.\n"
+                    f"Note: yfinance only provides recent news (typically last 30 days). "
+                    f"Historical news may not be available.")
     
     # Format articles for agent consumption
     lines = [f"News for {ticker} from {start_date} to {end_date}:\n"]
