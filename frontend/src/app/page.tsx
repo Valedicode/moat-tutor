@@ -16,8 +16,8 @@ export default function Home() {
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [startYear, setStartYear] = useState<number>(2020);
-  const [endYear, setEndYear] = useState<number>(2025);
+  const [startYear, setStartYear] = useState<number>(2015);
+  const [endYear, setEndYear] = useState<number>(2015);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const isActiveSession = messages.length > 0;
