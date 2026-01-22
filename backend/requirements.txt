@@ -29,4 +29,7 @@ requests>=2.31.0
 # HuggingFace datasets (for FNSPID)
 datasets>=2.14.0
 
+# OpenAI API (for embeddings and LLM)
+openai>=1.0.0
+
 

@@ -53,3 +53,11 @@ documentation/
 backend/data/*.xlsx
 backend/data/*.xls
 backend/data/*.csv
+
+# Generated cache files (auto-generated, don't commit)
+backend/data/cache/*.parquet
+backend/data/news/*.json
+
+# Generated cache and embeddings (keep structure, exclude generated data)
+backend/data/fnspid_cache/
+backend/data/fnspid_embeddings/
