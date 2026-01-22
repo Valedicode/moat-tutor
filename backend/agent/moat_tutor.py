@@ -22,6 +22,17 @@ from langchain_openai import ChatOpenAI
 from services.stock_data import get_stock_data_service
 from services.news_provider import get_news_for_agent
 
+# Import FNSPID retrieval for historical semantic search
+try:
+    from services.fnspid_retrieval import (
+        search_historical_news,
+        is_fnspid_data_available,
+        get_fnspid_status,
+    )
+    FNSPID_AVAILABLE = True
+except ImportError:
+    FNSPID_AVAILABLE = False
+
 # Load environment variables
 load_dotenv()
 
@@ -62,6 +73,11 @@ You are not just an analyst — you are a teacher. Your goal is to:
 
 ### 1. Analyze with Tools
 - Use available tools to gather news and price data for the requested ticker and time period
+- For historical queries (2015-2023):
+  - If the user asks about a SPECIFIC topic or event (e.g., "AI chip demand", "earnings", "product launch"), 
+    provide a query parameter to get_stock_news for semantic search with embeddings
+  - If the user asks for GENERAL analysis (e.g., "why did the stock move"), omit the query for chronological summary
+- For recent queries (2024+), the tool automatically uses yfinance
 - Analyze how specific events relate to price movements
 - Explain connections through the lens of moat characteristics
 
@@ -169,23 +185,35 @@ Remember: You are MoatTutor — a patient teacher who makes finance accessible a
 # ============================================================================
 
 @tool
-def get_stock_news(ticker: str, start_date: str, end_date: str) -> str:
+def get_stock_news(ticker: str, start_date: str, end_date: str, query: str = None) -> str:
     """
     Retrieves financial news articles for a stock ticker within a date range.
     
-    Uses yfinance to fetch real company-specific news articles.
-    Note: yfinance typically provides recent news (last 30 days).
-    Historical news may have limited availability.
+    This tool intelligently routes between data sources:
+    - Historical dates (2015-2023): Uses FNSPID dataset with 142K+ curated news passages
+    - Recent dates (2024+): Uses yfinance (typically last 30 days)
+    
+    For historical queries, you can optionally provide a search query to use semantic
+    search with embeddings. This finds the most relevant news passages for specific
+    topics or events.
     
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
         start_date: Start date in YYYY-MM-DD format
         end_date: End date in YYYY-MM-DD format
+        query: Optional search query for semantic retrieval (e.g., "AI chip demand", 
+               "earnings report", "supply chain issues"). If provided for historical 
+               dates, uses embeddings to find most relevant passages. If omitted, 
+               returns chronological summary.
     
     Returns:
         Formatted string containing news articles with dates and descriptions
+    
+    Examples:
+        - get_stock_news("NVDA", "2023-01-01", "2023-06-30")  # Chronological summary
+        - get_stock_news("NVDA", "2023-01-01", "2023-06-30", "AI chip demand")  # Semantic search
     """
-    return get_news_for_agent(ticker, start_date, end_date)
+    return get_news_for_agent(ticker, start_date, end_date, query=query)
 
 
 @tool
@@ -345,6 +373,46 @@ def get_moat_characteristics(ticker: str) -> str:
     )
 
 
+@tool
+def search_news_by_topic(ticker: str, query: str, start_date: str, end_date: str) -> str:
+    """
+    Search historical news for a specific topic using semantic similarity.
+    
+    This tool uses embeddings to find news passages that are semantically
+    similar to your query. It's best for finding specific events, themes,
+    or topics in historical news data (2015-2023).
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'NVDA')
+        query: What you're looking for (e.g., "earnings report", "AI chip demand", "supply chain issues")
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+    
+    Returns:
+        Relevant news passages ranked by similarity to your query
+    
+    Examples:
+        - search_news_by_topic("NVDA", "data center AI growth", "2023-01-01", "2023-06-30")
+        - search_news_by_topic("AAPL", "iPhone sales decline", "2022-06-01", "2022-12-31")
+    """
+    if not FNSPID_AVAILABLE:
+        return ("Historical news search is not available. "
+                "The FNSPID module could not be imported.")
+    
+    if not is_fnspid_data_available(ticker.upper()):
+        return (f"No historical news data available for {ticker}. "
+                f"Run the FNSPID pipeline first:\n"
+                f"  python -m services.fnspid_news_pipeline --tickers {ticker}")
+    
+    return search_historical_news(
+        ticker=ticker,
+        query=query,
+        start_date=start_date,
+        end_date=end_date,
+        top_k=5
+    )
+
+
 # ============================================================================
 # LLM Configuration
 # ============================================================================
@@ -385,6 +453,7 @@ def create_moat_agent():
         get_stock_prices,
         get_stock_time_series,
         get_moat_characteristics,
+        search_news_by_topic,  # Semantic search in historical news
     ]
     
     # Create LLM
