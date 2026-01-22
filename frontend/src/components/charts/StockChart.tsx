@@ -5,7 +5,6 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Line,
-  Area,
   Bar,
   XAxis,
   YAxis,
@@ -14,11 +13,11 @@ import {
   Legend,
 } from "recharts";
 import type { ChartDataResponse } from "@/lib/moatTutorApi";
+import { availableCompanies } from "@/constants/companies";
 
 interface StockChartProps {
   data: ChartDataResponse;
   showVolume?: boolean;
-  showArea?: boolean;
   height?: number;
   className?: string;
 }
@@ -26,10 +25,15 @@ interface StockChartProps {
 export function StockChart({
   data,
   showVolume = true,
-  showArea = true,
   height = 300,
   className = "",
 }: StockChartProps) {
+  // Get company name from ticker
+  const companyName = useMemo(() => {
+    const company = availableCompanies.find((c) => c.ticker === data.ticker);
+    return company?.name || data.ticker;
+  }, [data.ticker]);
+
   // Transform API data to Recharts format
   const chartData = useMemo(() => {
     return data.dates.map((date, i) => ({
@@ -167,18 +171,6 @@ export function StockChart({
             />
           )}
 
-          {showArea && (
-            <Area
-              yAxisId="price"
-              type="monotone"
-              dataKey="close"
-              stroke="var(--risk)"
-              strokeWidth={0}
-              fillOpacity={1}
-              fill="url(#colorPrice)"
-            />
-          )}
-
           <Line
             yAxisId="price"
             type="monotone"
@@ -194,7 +186,7 @@ export function StockChart({
       {/* Chart Info */}
       <div className="mt-3 flex items-center justify-between text-xs" style={{ color: "var(--text-tertiary)" }}>
         <div>
-          {data.ticker} • {data.interval_display} • {data.data_points} points
+          {companyName} ({data.ticker}) • {data.interval_display} • {data.data_points} points
         </div>
         <div>
           {new Date(data.start_date).toLocaleDateString()} -{" "}
