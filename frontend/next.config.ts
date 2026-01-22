@@ -15,6 +15,10 @@ const nextConfig: NextConfig = {
         source: "/api/v1/:path*",
         destination: `${backendUrl}/api/v1/:path*`,
       },
+      {
+        source: "/api/audio/:path*",
+        destination: `${backendUrl}/api/audio/:path*`,
+      },
       // Optional health/monitoring endpoints
       { source: "/health", destination: `${backendUrl}/health` },
       { source: "/metrics", destination: `${backendUrl}/metrics` },

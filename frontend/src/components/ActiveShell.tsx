@@ -9,7 +9,6 @@ type ActiveShellProps = {
   onInputChange: (value: string) => void;
   onSubmit: (value?: string) => void;
   chatScrollRef: React.MutableRefObject<HTMLDivElement | null>;
-  toggleListening: () => void;
   ticker?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -21,7 +20,6 @@ export function ActiveShell({
   onInputChange,
   onSubmit,
   chatScrollRef,
-  toggleListening,
   ticker,
   startDate,
   endDate,
@@ -90,7 +88,6 @@ export function ActiveShell({
             value={inputValue}
             onChange={onInputChange}
             onSubmit={() => onSubmit()}
-            onToggleMic={toggleListening}
             variant="active"
           />
         </div>
