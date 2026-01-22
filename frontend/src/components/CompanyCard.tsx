@@ -109,6 +109,21 @@ export function CompanyCard({ company, isSelected, onToggle }: CompanyCardProps)
         >
           Marktcap.: {company.marketCap}
         </p>
+        {/* Historical Data Indicator */}
+        {company.historicalNewsAvailable && (
+          <div
+            className="mt-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium"
+            style={{
+              backgroundColor: "color-mix(in srgb, var(--accent) 10%, transparent)",
+              color: "var(--accent)",
+            }}
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Historical Data (2015-2023)
+          </div>
+        )}
       </div>
     </button>
   );

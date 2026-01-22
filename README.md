@@ -60,15 +60,20 @@ The goal is to help non-finance users understand why a stock might have moved th
 
 ### Data Inputs
 
-- **Text data**
-  - Financial news articles and headlines.
-  - Company press releases and earnings summaries.
+- **Historical News Data (FNSPID)**
+  - 142,287 curated news passages from 2015-2023
+  - Semantic search with OpenAI embeddings
+  - 9 tickers with full coverage: AAPL, NVDA, MSFT, AMD, GOOGL, AVGO, ORCL, CSCO, MU
+  - Stored locally as compressed passages + embeddings
+
+- **Recent News Data (yfinance)**
+  - Real-time news for all supported tickers
+  - Typically covers last 30 days
+  - Used for queries after 2023
 
 - **Time series data**
-  - OHLCV price histories for selected MOAT-style technology stocks.
-  - Simple derived metrics (returns, volatility, event-window moves, etc.).
-
-All data is loaded from a **controlled, historical dataset** for reproducibility (no live trading or real-time data).
+  - OHLCV price histories for selected MOAT-style technology stocks
+  - Simple derived metrics (returns, volatility, event-window moves, etc.)
 
 ---
 
@@ -102,7 +107,7 @@ LLM_MODEL=gpt-4o-mini
 LLM_STREAMING=true
 ```
 
-Start the backend server:
+##### 2. Start the backend server
 
 ```bash
 uvicorn main:app --reload --port 8000
