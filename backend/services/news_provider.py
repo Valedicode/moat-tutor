@@ -410,6 +410,7 @@ def get_news_for_agent(
     
     This function intelligently chooses between:
     - FNSPID historical data (2015-2023) for older date ranges
+    - Alpha Vantage (2024-2025) for the gap year period
     - yfinance (recent 30 days) for current news
     
     Args:
@@ -432,9 +433,14 @@ def get_news_for_agent(
     
     # FNSPID is best for historical data (2015-2023)
     fnspid_cutoff = datetime(2023, 12, 31)
-    is_historical = end_dt <= fnspid_cutoff
+    alpha_vantage_start = datetime(2024, 1, 1)
+    alpha_vantage_end = datetime(2025, 12, 31)
     
-    # Try FNSPID for historical queries
+    is_historical = end_dt <= fnspid_cutoff
+    # Check if date range overlaps with 2024-2025 gap period
+    overlaps_gap_period = start_dt <= alpha_vantage_end and end_dt >= alpha_vantage_start
+    
+    # Try FNSPID for purely historical queries (2015-2023)
     if is_historical and FNSPID_AVAILABLE:
         if is_fnspid_data_available(ticker_upper):
             if query:
@@ -458,7 +464,55 @@ def get_news_for_agent(
             # FNSPID data not yet downloaded
             logger.info(f"FNSPID data not available for {ticker_upper}, using yfinance")
     
-    # Fall back to yfinance for recent news or if FNSPID unavailable
+    # Try Alpha Vantage if date range overlaps with 2024-2025
+    if overlaps_gap_period and not is_historical:
+        try:
+            from services.alpha_vantage_provider import fetch_alpha_vantage_news
+            
+            # Constrain dates to Alpha Vantage coverage (2024-2025)
+            av_start = max(start_dt, alpha_vantage_start).strftime("%Y-%m-%d")
+            av_end = min(end_dt, alpha_vantage_end).strftime("%Y-%m-%d")
+            
+            articles = fetch_alpha_vantage_news(
+                ticker=ticker_upper,
+                start_date=av_start,
+                end_date=av_end,
+                use_cache=True
+            )
+            
+            if articles:
+                # Format articles for agent consumption
+                lines = [f"News for {ticker_upper} from {av_start} to {av_end} (Alpha Vantage):\n"]
+                
+                for i, article in enumerate(articles, 1):
+                    date = article.get('date', 'Unknown date')
+                    title = article.get('title', 'No title')
+                    publisher = article.get('publisher', 'Unknown source')
+                    summary = article.get('summary', '')
+                    topics = article.get('topics', [])
+                    
+                    lines.append(f"{i}. [{date}] {title}")
+                    lines.append(f"   Source: {publisher}")
+                    
+                    # Include topics if available (helpful for 2024-2025 filtering)
+                    if topics:
+                        lines.append(f"   Topics: {', '.join(topics[:5])}")  # Limit to 5 topics
+                    
+                    if summary:
+                        # Truncate long summaries
+                        if len(summary) > 200:
+                            summary = summary[:200] + "..."
+                        lines.append(f"   Summary: {summary}")
+                    lines.append("")
+                
+                return "\n".join(lines)
+            
+        except ImportError:
+            logger.warning("Alpha Vantage provider not available")
+        except Exception as e:
+            logger.warning(f"Alpha Vantage fetch failed for {ticker_upper}, falling back to yfinance: {e}")
+    
+    # Fall back to yfinance for recent news or if other sources unavailable
     try:
         articles = fetch_company_news(ticker, start_date, end_date)
     except ValueError as e:

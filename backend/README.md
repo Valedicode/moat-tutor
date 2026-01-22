@@ -8,9 +8,10 @@ MoatTutor is a **teaching financial agent** that explains stock behavior while a
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Create .env file with your OpenAI key
+# 2. Create .env file with your OpenAI key and Alpha Vantage key
 echo "LLM_PROVIDER=openai" > .env
 echo "OPENAI_API_KEY=your_key_here" >> .env
+echo "ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key" >> .env
 
 # 3. Test the agent
 python interactive_tutorial.py
@@ -37,6 +38,13 @@ uvicorn main:app --reload
   - Generates OpenAI embeddings for semantic search
   - Supports 9 tickers: AAPL, NVDA, MSFT, AMD, GOOGL, AVGO, ORCL, CSCO, MU
   - Local storage: ~63 MB compressed
+
+- **Alpha Vantage News Provider** (`services/alpha_vantage_provider.py`)
+  - Fills 2024-2025 news gap using Alpha Vantage NEWS_SENTIMENT API
+  - Disk caching (7-day validity for historical news)
+  - Extracts topics for better filtering
+  - Free tier: 5 req/min, 500 req/day
+  - Get free API key: https://www.alphavantage.co/support/#api-key
 
 - **Semantic News Retrieval** (`services/fnspid_retrieval.py`)
   - Embedding-based similarity search
@@ -96,6 +104,32 @@ python -m services.fnspid_news_pipeline
 - ⚠️ PLTR: No historical data (IPO 2020)
 
 **Total:** 142,287 passages, 62.71 MB
+
+### Alpha Vantage Setup (2024-2025 News Gap)
+
+The backend uses Alpha Vantage to fill the news gap for 2024-2025:
+
+1. **Get your free API key** at https://www.alphavantage.co/support/#api-key
+2. **Add to `.env` file:**
+   ```bash
+   ALPHA_VANTAGE_API_KEY=your_key_here
+   ALPHA_VANTAGE_BASE_URL=https://www.alphavantage.co/query
+   ```
+
+3. **Test the integration:**
+   ```bash
+   python test_alpha_vantage_integration.py
+   ```
+
+**Data Coverage:**
+- 2015-2023: FNSPID dataset (semantic search with embeddings)
+- 2024-2025: Alpha Vantage NEWS_SENTIMENT (with topics)
+- Recent (~30 days): yfinance (fallback)
+
+**Free Tier Limits:**
+- 5 API calls per minute
+- 500 API calls per day
+- Cache is valid for 7 days (historical news doesn't change)
 
 ### Test the API
 
