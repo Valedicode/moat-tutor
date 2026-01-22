@@ -7,6 +7,7 @@ export const availableCompanies: Company[] = [
     ticker: "NVDA",
     sector: "Semiconductors",
     marketCap: "$3.3T",
+    historicalNewsAvailable: true,
   },
   {
     id: "aapl",
@@ -14,6 +15,7 @@ export const availableCompanies: Company[] = [
     ticker: "AAPL",
     sector: "Technology",
     marketCap: "$3.7T",
+    historicalNewsAvailable: true,
   },
   {
     id: "msft",
@@ -21,6 +23,7 @@ export const availableCompanies: Company[] = [
     ticker: "MSFT",
     sector: "Technology",
     marketCap: "$3.1T",
+    historicalNewsAvailable: true,
   },
   {
     id: "avgo",
@@ -28,6 +31,7 @@ export const availableCompanies: Company[] = [
     ticker: "AVGO",
     sector: "Semiconductors",
     marketCap: "$790B",
+    historicalNewsAvailable: true,
   },
   {
     id: "orcl",
@@ -35,6 +39,7 @@ export const availableCompanies: Company[] = [
     ticker: "ORCL",
     sector: "Software",
     marketCap: "$530B",
+    historicalNewsAvailable: true,
   },
   {
     id: "amd",
@@ -42,6 +47,7 @@ export const availableCompanies: Company[] = [
     ticker: "AMD",
     sector: "Semiconductors",
     marketCap: "$210B",
+    historicalNewsAvailable: true,
   },
   {
     id: "csco",
@@ -49,6 +55,7 @@ export const availableCompanies: Company[] = [
     ticker: "CSCO",
     sector: "Networking",
     marketCap: "$240B",
+    historicalNewsAvailable: true,
   },
   {
     id: "pltr",
@@ -56,6 +63,7 @@ export const availableCompanies: Company[] = [
     ticker: "PLTR",
     sector: "Software & AI",
     marketCap: "$180B",
+    historicalNewsAvailable: false, // IPO 2020, limited historical coverage
   },
   {
     id: "mu",
@@ -63,6 +71,7 @@ export const availableCompanies: Company[] = [
     ticker: "MU",
     sector: "Memory & Storage",
     marketCap: "$110B",
+    historicalNewsAvailable: true,
   },
   {
     id: "googl",
@@ -70,6 +79,7 @@ export const availableCompanies: Company[] = [
     ticker: "GOOGL",
     sector: "Technology",
     marketCap: "$2.0T",
+    historicalNewsAvailable: true,
   },
 ];
 

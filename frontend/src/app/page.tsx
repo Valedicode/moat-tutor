@@ -17,8 +17,8 @@ export default function Home() {
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [startYear, setStartYear] = useState<number>(2024);
-  const [endYear, setEndYear] = useState<number>(2025);
+  const [startYear, setStartYear] = useState<number>(2015);
+  const [endYear, setEndYear] = useState<number>(2015);
   const [visualizerLevels, setVisualizerLevels] = useState<number[]>(
     () => Array.from({ length: 16 }, () => 10),
   );
