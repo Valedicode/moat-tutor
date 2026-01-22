@@ -45,7 +45,19 @@ backend/__pycache__/
 backend/.pytest_cache/
 backend/.mypy_cache/
 backend/.ruff_cache/
-backend/data/
 
 # Documentation (local reading only for planning)
 documentation/
+
+# Data files (keep structure, exclude actual data)
+backend/data/*.xlsx
+backend/data/*.xls
+backend/data/*.csv
+
+# Generated cache files (auto-generated, don't commit)
+backend/data/cache/*.parquet
+backend/data/news/*.json
+
+# Generated cache and embeddings (keep structure, exclude generated data)
+backend/data/fnspid_cache/
+backend/data/fnspid_embeddings/

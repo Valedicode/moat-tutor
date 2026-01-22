@@ -21,11 +21,18 @@ pydantic-settings>=2.0.0
 pandas>=2.2.0
 numpy>=1.26.0
 
+# Stock price data from yfinance
+yfinance>=0.2.40
+pyarrow>=14.0.0
+
 # HTTP client for async requests
 httpx>=0.25.0
 requests>=2.31.0
 
 # HuggingFace datasets (for FNSPID)
 datasets>=2.14.0
+
+# OpenAI API (for embeddings and LLM)
+openai>=1.0.0
 
 

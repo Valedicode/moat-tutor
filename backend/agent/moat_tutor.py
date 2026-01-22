@@ -4,7 +4,7 @@ MoatTutor Agent
 This file contains everything needed for the MoatTutor agent:
 - LLM configuration
 - MOAT framework prompt
-- Mock tools (to be replaced with real data later)
+- Real data tools (stock prices, time series, moat characteristics)
 - Agent setup
 """
 
@@ -18,6 +18,20 @@ from langchain.agents import create_agent
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
+
+from services.stock_data import get_stock_data_service
+from services.news_provider import get_news_for_agent
+
+# Import FNSPID retrieval for historical semantic search
+try:
+    from services.fnspid_retrieval import (
+        search_historical_news,
+        is_fnspid_data_available,
+        get_fnspid_status,
+    )
+    FNSPID_AVAILABLE = True
+except ImportError:
+    FNSPID_AVAILABLE = False
 
 # Load environment variables
 load_dotenv()
@@ -59,6 +73,11 @@ You are not just an analyst — you are a teacher. Your goal is to:
 
 ### 1. Analyze with Tools
 - Use available tools to gather news and price data for the requested ticker and time period
+- For historical queries (2015-2023):
+  - If the user asks about a SPECIFIC topic or event (e.g., "AI chip demand", "earnings", "product launch"), 
+    provide a query parameter to get_stock_news for semantic search with embeddings
+  - If the user asks for GENERAL analysis (e.g., "why did the stock move"), omit the query for chronological summary
+- For recent queries (2024+), the tool automatically uses yfinance
 - Analyze how specific events relate to price movements
 - Explain connections through the lens of moat characteristics
 
@@ -162,31 +181,39 @@ Remember: You are MoatTutor — a patient teacher who makes finance accessible a
 
 
 # ============================================================================
-# Mock Tools (will be replaced with real data later)
+# Agent Tools
 # ============================================================================
 
 @tool
-def get_stock_news(ticker: str, start_date: str, end_date: str) -> str:
+def get_stock_news(ticker: str, start_date: str, end_date: str, query: str = None) -> str:
     """
     Retrieves financial news articles for a stock ticker within a date range.
     
+    This tool intelligently routes between data sources:
+    - Historical dates (2015-2023): Uses FNSPID dataset with 142K+ curated news passages
+    - Recent dates (2024+): Uses yfinance (typically last 30 days)
+    
+    For historical queries, you can optionally provide a search query to use semantic
+    search with embeddings. This finds the most relevant news passages for specific
+    topics or events.
+    
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
         start_date: Start date in YYYY-MM-DD format
         end_date: End date in YYYY-MM-DD format
+        query: Optional search query for semantic retrieval (e.g., "AI chip demand", 
+               "earnings report", "supply chain issues"). If provided for historical 
+               dates, uses embeddings to find most relevant passages. If omitted, 
+               returns chronological summary.
     
     Returns:
         Formatted string containing news articles with dates and descriptions
-    """
-    # This will be replaced with real FNSPID data
-    return f"""News for {ticker} from {start_date} to {end_date}:
     
-1. [2023-01-15] {ticker} announces strong quarterly earnings, beating analyst expectations
-2. [2023-01-20] CEO discusses expansion plans in earnings call
-3. [2023-01-25] New product launch receives positive reviews from industry analysts
-4. [2023-02-01] Regulatory concerns emerge regarding data privacy practices
-5. [2023-02-10] Company announces strategic partnership with major industry player
-"""
+    Examples:
+        - get_stock_news("NVDA", "2023-01-01", "2023-06-30")  # Chronological summary
+        - get_stock_news("NVDA", "2023-01-01", "2023-06-30", "AI chip demand")  # Semantic search
+    """
+    return get_news_for_agent(ticker, start_date, end_date, query=query)
 
 
 @tool
@@ -195,29 +222,128 @@ def get_stock_prices(ticker: str, start_date: str, end_date: str) -> str:
     Retrieves historical OHLCV (Open, High, Low, Close, Volume) price data for a stock.
     
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'GOOGL', 'NVDA')
         start_date: Start date in YYYY-MM-DD format
         end_date: End date in YYYY-MM-DD format
     
     Returns:
         Formatted string containing price data, returns, and notable movements
     """
-    # This will be replaced with real FNSPID data
-    return f"""Price data for {ticker} from {start_date} to {end_date}:
-    
-Opening Price: $150.25
-Closing Price: $162.80
-Period Return: +8.35%
-High: $165.40 (on 2023-01-28)
-Low: $148.90 (on 2023-02-05)
-Average Daily Volume: 45.2M shares
-Volatility: 18.5% (annualized)
+    try:
+        service = get_stock_data_service()
+        
+        # Get return statistics
+        stats = service.calculate_returns(ticker, start_date, end_date)
+        
+        if "error" in stats:
+            return f"Error: {stats['error']}"
+        
+        # Get notable movements
+        movements = service.find_notable_movements(ticker, start_date, end_date, threshold_pct=3.0)
+        
+        # Format response
+        response = f"""Price data for {stats['ticker']} from {stats['start_date']} to {stats['end_date']}:
 
-Notable movements:
-- Sharp rally (+6.2%) following earnings announcement
-- Pullback (-4.1%) during regulatory concerns
-- Recovery (+3.8%) after partnership announcement
+Opening Price: ${stats['opening_price']}
+Closing Price: ${stats['closing_price']}
+Period Return: {stats['period_return_pct']:+.2f}%
+High: ${stats['high_price']} (on {stats['high_date']})
+Low: ${stats['low_price']} (on {stats['low_date']})
+Average Daily Volume: {stats['avg_daily_volume']:,.0f} shares
+Volatility: {stats['volatility_annualized_pct']:.2f}% (annualized)
+Total Trading Days: {stats['total_days']}
 """
+        
+        if movements:
+            response += "\nNotable movements (>3% daily change):\n"
+            for m in movements[:10]:  # Limit to top 10
+                sign = "+" if m['pct_change'] > 0 else ""
+                response += f"- {m['date']}: {sign}{m['pct_change']}% (${m['open']} -> ${m['close']})\n"
+        else:
+            response += "\nNo notable single-day movements (>3%) during this period.\n"
+        
+        return response
+        
+    except FileNotFoundError:
+        available = service.available_tickers()
+        return f"Error: No data available for ticker {ticker}. Available tickers: {', '.join(available)}"
+    except Exception as e:
+        return f"Error retrieving price data: {str(e)}"
+
+
+@tool
+def get_stock_time_series(ticker: str, start_date: str, end_date: str, columns: str = "close,volume") -> str:
+    """
+    Retrieves detailed time series data for a stock (daily prices and volumes).
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'GOOGL', 'NVDA')
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+        columns: Comma-separated list of columns to include (e.g., 'open,high,low,close,volume')
+    
+    Returns:
+        Formatted string with daily time series data
+    """
+    try:
+        service = get_stock_data_service()
+        
+        # Parse columns
+        column_list = [c.strip() for c in columns.split(',')]
+        
+        # Get time series data
+        data = service.get_time_series(ticker, start_date, end_date, column_list)
+        
+        if "error" in data:
+            return f"Error: {data['error']}"
+        
+        # Format as a table
+        dates = data['dates']
+        response = f"Time series data for {data['ticker']}:\n\n"
+        
+        # Create header
+        header = "Date       "
+        for col in column_list:
+            if col in data:
+                header += f" {col.capitalize():>12}"
+        response += header + "\n"
+        response += "-" * len(header) + "\n"
+        
+        # Add rows (limit to sample if too many)
+        max_rows = 50
+        if len(dates) > max_rows:
+            # Show first 25 and last 25
+            indices = list(range(25)) + list(range(len(dates) - 25, len(dates)))
+            response += "# Showing first 25 and last 25 days\n"
+        else:
+            indices = range(len(dates))
+        
+        prev_idx = -2
+        for i in indices:
+            if i - prev_idx > 1:
+                response += "...\n"
+            
+            row = f"{dates[i]} "
+            for col in column_list:
+                if col in data:
+                    value = data[col][i]
+                    if col == 'volume':
+                        row += f" {value:>12,.0f}"
+                    else:
+                        row += f" {value:>12.2f}"
+            response += row + "\n"
+            prev_idx = i
+        
+        response += f"\nTotal data points: {len(dates)}"
+        
+        return response
+        
+    except FileNotFoundError:
+        service = get_stock_data_service()
+        available = service.available_tickers()
+        return f"Error: No data available for ticker {ticker}. Available tickers: {', '.join(available)}"
+    except Exception as e:
+        return f"Error retrieving time series data: {str(e)}"
 
 
 @tool
@@ -236,6 +362,7 @@ def get_moat_characteristics(ticker: str) -> str:
         "AAPL": "Strong: Network Effects (ecosystem), Intangible Assets (brand), Switching Costs (ecosystem lock-in)",
         "MSFT": "Strong: Network Effects (enterprise adoption), Intangible Assets (brand, IP), Switching Costs (enterprise integration)",
         "GOOGL": "Strong: Network Effects (search/ads), Intangible Assets (data, brand), Cost Advantages (scale)",
+        "NVDA": "Strong: Intangible Assets (IP, CUDA platform), Network Effects (developer ecosystem), Cost Advantages (scale, R&D efficiency)",
         "AMZN": "Strong: Network Effects (marketplace), Cost Advantages (logistics scale), Efficient Scale (AWS)",
         "META": "Strong: Network Effects (social platforms), Intangible Assets (user data), Switching Costs (social graph)",
     }
@@ -243,6 +370,46 @@ def get_moat_characteristics(ticker: str) -> str:
     return moat_profiles.get(
         ticker.upper(),
         "Moderate: Intangible Assets (brand), Cost Advantages (operational efficiency)"
+    )
+
+
+@tool
+def search_news_by_topic(ticker: str, query: str, start_date: str, end_date: str) -> str:
+    """
+    Search historical news for a specific topic using semantic similarity.
+    
+    This tool uses embeddings to find news passages that are semantically
+    similar to your query. It's best for finding specific events, themes,
+    or topics in historical news data (2015-2023).
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'NVDA')
+        query: What you're looking for (e.g., "earnings report", "AI chip demand", "supply chain issues")
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+    
+    Returns:
+        Relevant news passages ranked by similarity to your query
+    
+    Examples:
+        - search_news_by_topic("NVDA", "data center AI growth", "2023-01-01", "2023-06-30")
+        - search_news_by_topic("AAPL", "iPhone sales decline", "2022-06-01", "2022-12-31")
+    """
+    if not FNSPID_AVAILABLE:
+        return ("Historical news search is not available. "
+                "The FNSPID module could not be imported.")
+    
+    if not is_fnspid_data_available(ticker.upper()):
+        return (f"No historical news data available for {ticker}. "
+                f"Run the FNSPID pipeline first:\n"
+                f"  python -m services.fnspid_news_pipeline --tickers {ticker}")
+    
+    return search_historical_news(
+        ticker=ticker,
+        query=query,
+        start_date=start_date,
+        end_date=end_date,
+        top_k=5
     )
 
 
@@ -284,7 +451,9 @@ def create_moat_agent():
     tools = [
         get_stock_news,
         get_stock_prices,
+        get_stock_time_series,
         get_moat_characteristics,
+        search_news_by_topic,  # Semantic search in historical news
     ]
     
     # Create LLM
