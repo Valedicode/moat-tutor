@@ -481,28 +481,21 @@ def get_news_for_agent(
             )
             
             if articles:
-                # Format articles for agent consumption
-                lines = [f"News for {ticker_upper} from {av_start} to {av_end} (Alpha Vantage):\n"]
+                # Provide condensed articles for the agent to cluster into moat-relevant themes
+                lines = [f"News for {ticker_upper} from {av_start} to {av_end}:\n"]
+                lines.append(f"Articles retrieved: {len(articles)}\n")
                 
                 for i, article in enumerate(articles, 1):
                     date = article.get('date', 'Unknown date')
                     title = article.get('title', 'No title')
-                    publisher = article.get('publisher', 'Unknown source')
                     summary = article.get('summary', '')
-                    topics = article.get('topics', [])
                     
                     lines.append(f"{i}. [{date}] {title}")
-                    lines.append(f"   Source: {publisher}")
-                    
-                    # Include topics if available (helpful for 2024-2025 filtering)
-                    if topics:
-                        lines.append(f"   Topics: {', '.join(topics[:5])}")  # Limit to 5 topics
-                    
                     if summary:
-                        # Truncate long summaries
-                        if len(summary) > 200:
-                            summary = summary[:200] + "..."
-                        lines.append(f"   Summary: {summary}")
+                        # Condensed summary (100 chars max)
+                        if len(summary) > 100:
+                            summary = summary[:100] + "..."
+                        lines.append(f"   {summary}")
                     lines.append("")
                 
                 return "\n".join(lines)
