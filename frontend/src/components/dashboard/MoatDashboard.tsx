@@ -159,41 +159,38 @@ export function MoatDashboard({
     : 0;
 
   return (
-    <div
-      className="flex h-full flex-col gap-6 rounded-[36px] border p-6"
-      style={{
-        borderColor: "var(--border)",
-        backgroundColor: "color-mix(in srgb, var(--surface) 75%, transparent)",
-      }}
-    >
+    <div className="flex h-full flex-col gap-4">
       {/* Header Alert */}
-      <div className="rounded-2xl border p-4" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
-        <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--risk)" }}>
-          {ticker ? `${companyName} Price Analysis` : "Select a company to view analysis"}
+      <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
+        <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--risk)" }}>
+          {ticker ? `${companyName} Analysis` : "Select a company"}
         </h2>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-2">
+      {/* Main Content Stack */}
+      <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-2 scrollbar-hide">
         {/* Stock Chart */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 flex-shrink-0">
+          <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+            Price Chart
+          </h3>
           <div
-            className="relative rounded-xl border p-4"
+            className="relative rounded-xl border p-3"
             style={{
               borderColor: "var(--border)",
               backgroundColor: "var(--background)",
-              minHeight: "300px",
+              minHeight: "220px",
             }}
           >
             {isLoading && (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center">
                   <div
-                    className="mb-2 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"
+                    className="mb-2 inline-block h-6 w-6 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"
                     style={{ color: "var(--accent)" }}
                   />
-                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                    Loading chart data...
+                  <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                    Loading...
                   </p>
                 </div>
               </div>
@@ -202,7 +199,7 @@ export function MoatDashboard({
             {error && (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center">
-                  <p className="text-sm font-semibold" style={{ color: "var(--risk)" }}>
+                  <p className="text-xs font-semibold" style={{ color: "var(--risk)" }}>
                     Error loading chart
                   </p>
                   <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -213,27 +210,27 @@ export function MoatDashboard({
             )}
 
             {!isLoading && !error && chartData && (
-              <StockChart data={chartData} showVolume={true} height={280} />
+              <StockChart data={chartData} showVolume={false} height={200} />
             )}
 
             {!isLoading && !error && !chartData && !ticker && (
               <div className="flex h-full items-center justify-center">
-                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                  Select a company to view price chart
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  Select a company
                 </p>
               </div>
             )}
           </div>
 
           {chartData && (
-            <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
+            <div className="rounded-xl border p-2" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
                     Period Return
                   </span>
                   <p
-                    className="text-lg font-bold"
+                    className="text-base font-bold"
                     style={{
                       color: priceChange >= 0 ? "#10b981" : "#ef4444",
                     }}
@@ -243,9 +240,9 @@ export function MoatDashboard({
                 </div>
                 <div className="text-right">
                   <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-                    Price Range
+                    Range
                   </span>
-                  <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
                     ${Math.min(...chartData.low).toFixed(2)} - $
                     {Math.max(...chartData.high).toFixed(2)}
                   </p>
@@ -256,83 +253,81 @@ export function MoatDashboard({
         </div>
 
         {/* Moat Radar */}
-        <div
-          className="flex flex-col gap-4 rounded-xl border p-6"
-          style={{
-            borderColor: "var(--border)",
-            backgroundColor: "var(--background)",
-            minHeight: "300px",
-          }}
-        >
-          {/* Moat Rating Badge - only shown when we have a real assessment */}
-          {moatAssessment && (
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
-                  Moat Rating
-                </span>
-                <p className="mt-1 text-lg font-bold" style={{ 
-                  color: moatAssessment.overall_rating === "Wide" ? "#10b981" : 
-                         moatAssessment.overall_rating === "Narrow" ? "#eab308" : "#ef4444" 
-                }}>
-                  {moatAssessment.overall_rating} Moat
-                </p>
+        <div className="flex flex-col gap-3 flex-shrink-0">
+          <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+            Moat Analysis
+          </h3>
+          <div
+            className="flex flex-col gap-3 rounded-xl border p-4"
+            style={{
+              borderColor: "var(--border)",
+              backgroundColor: "var(--background)",
+            }}
+          >
+            {/* Moat Rating Badge - only shown when we have a real assessment */}
+            {moatAssessment && (
+              <div className="flex items-center justify-between rounded-lg border p-2" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
+                <div>
+                  <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                    Rating
+                  </span>
+                  <p className="mt-0.5 text-base font-bold" style={{ 
+                    color: moatAssessment.overall_rating === "Wide" ? "#10b981" : 
+                           moatAssessment.overall_rating === "Narrow" ? "#eab308" : "#ef4444" 
+                  }}>
+                    {moatAssessment.overall_rating} Moat
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                    Confidence
+                  </span>
+                  <p className="mt-0.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                    {moatAssessment.overall_confidence}
+                  </p>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
-                  Confidence
-                </span>
-                <p className="mt-1 text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
-                  {moatAssessment.overall_confidence}
-                </p>
-              </div>
-            </div>
-          )}
+            )}
 
-          {ticker ? (
-            <div className="flex flex-col items-center gap-4">
-              <MoatRadar scores={moatScores} size={280} />
-              
-              {/* Hint when no assessment yet */}
-              {!moatAssessment && (
-                <p className="text-center text-xs" style={{ color: "var(--text-tertiary)" }}>
-                  Ask a question in the chat to analyze this company&apos;s moat
+            {ticker ? (
+              <div className="flex flex-col items-center gap-3">
+                <MoatRadar scores={moatScores} size={240} />
+                
+                {/* Hint when no assessment yet */}
+                {!moatAssessment && (
+                  <p className="text-center text-xs" style={{ color: "var(--text-tertiary)" }}>
+                    Ask about moat analysis in chat
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex h-32 items-center justify-center">
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  Select a company
                 </p>
-              )}
-            </div>
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                Select a company to view MOAT analysis
-              </p>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* AI Explanation */}
-      <div className="rounded-2xl border p-5" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
-        <h3 className="text-xs font-semibold uppercase tracking-[0.3em]" style={{ color: "var(--text-secondary)" }}>
-          Price Movement Summary
-        </h3>
-        <p className="mt-3 text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
-          {chartData ? (
-            <>
-              {ticker} {priceChange >= 0 ? "gained" : "declined"}{" "}
-              <span className="font-semibold" style={{ color: priceChange >= 0 ? "#10b981" : "#ef4444" }}>
-                {Math.abs(priceChange).toFixed(2)}%
-              </span>{" "}
-              from {new Date(chartData.start_date).toLocaleDateString()} to{" "}
-              {new Date(chartData.end_date).toLocaleDateString()}, moving from $
-              {chartData.close[0].toFixed(2)} to ${chartData.close[chartData.close.length - 1].toFixed(2)}.
-              The stock reached a high of ${Math.max(...chartData.high).toFixed(2)} and a low of $
-              {Math.min(...chartData.low).toFixed(2)} during this period.
-            </>
-          ) : (
-            "Select a company and date range to view price movement analysis."
-          )}
-        </p>
-      </div>
+      {chartData && (
+        <div className="rounded-xl border p-3 flex-shrink-0" style={{ borderColor: "var(--border)", backgroundColor: "var(--border-subtle)" }}>
+          <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-secondary)" }}>
+            Summary
+          </h3>
+          <p className="mt-2 text-xs leading-relaxed" style={{ color: "var(--text-primary)" }}>
+            {ticker} {priceChange >= 0 ? "gained" : "declined"}{" "}
+            <span className="font-semibold" style={{ color: priceChange >= 0 ? "#10b981" : "#ef4444" }}>
+              {Math.abs(priceChange).toFixed(2)}%
+            </span>{" "}
+            from {new Date(chartData.start_date).toLocaleDateString()} to{" "}
+            {new Date(chartData.end_date).toLocaleDateString()}, moving from $
+            {chartData.close[0].toFixed(2)} to ${chartData.close[chartData.close.length - 1].toFixed(2)}.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
