@@ -431,41 +431,55 @@ def get_news_for_agent(
     except ValueError:
         return f"Error: Invalid date format. Use YYYY-MM-DD."
     
-    # FNSPID is best for historical data (2015-2023)
-    fnspid_cutoff = datetime(2023, 12, 31)
+    # Define period boundaries
+    fnspid_start = datetime(2015, 1, 1)
+    fnspid_end = datetime(2023, 12, 31)
     alpha_vantage_start = datetime(2024, 1, 1)
     alpha_vantage_end = datetime(2025, 12, 31)
     
-    is_historical = end_dt <= fnspid_cutoff
-    # Check if date range overlaps with 2024-2025 gap period
-    overlaps_gap_period = start_dt <= alpha_vantage_end and end_dt >= alpha_vantage_start
+    # Check overlap with each data source period
+    overlaps_fnspid = start_dt <= fnspid_end and end_dt >= fnspid_start
+    overlaps_alpha_vantage = start_dt <= alpha_vantage_end and end_dt >= alpha_vantage_start
     
-    # Try FNSPID for purely historical queries (2015-2023)
-    if is_historical and FNSPID_AVAILABLE:
-        if is_fnspid_data_available(ticker_upper):
+    news_sections = []
+    
+    # Fetch from FNSPID if date range overlaps 2015-2023
+    if overlaps_fnspid and FNSPID_AVAILABLE and is_fnspid_data_available(ticker_upper):
+        try:
+            # Constrain dates to FNSPID coverage
+            fnspid_query_start = max(start_dt, fnspid_start).strftime("%Y-%m-%d")
+            fnspid_query_end = min(end_dt, fnspid_end).strftime("%Y-%m-%d")
+            
             if query:
                 # Semantic search with query
-                return get_relevant_news_passages(
+                fnspid_news = get_relevant_news_passages(
                     query=query,
                     ticker=ticker_upper,
-                    start_date=start_date,
-                    end_date=end_date,
+                    start_date=fnspid_query_start,
+                    end_date=fnspid_query_end,
                     top_k=10
                 )
             else:
                 # Return chronological summary
-                return get_news_summary(
+                fnspid_news = get_news_summary(
                     ticker=ticker_upper,
-                    start_date=start_date,
-                    end_date=end_date,
+                    start_date=fnspid_query_start,
+                    end_date=fnspid_query_end,
                     max_articles=20
                 )
-        else:
-            # FNSPID data not yet downloaded
-            logger.info(f"FNSPID data not available for {ticker_upper}, using yfinance")
+            
+            if fnspid_news and not fnspid_news.startswith("No news"):
+                news_sections.append(f"=== Historical News (FNSPID: {fnspid_query_start} to {fnspid_query_end}) ===\n{fnspid_news}")
+                logger.info(f"Retrieved FNSPID news for {ticker_upper}")
+        except Exception as e:
+            logger.warning(f"FNSPID fetch failed for {ticker_upper}: {e}")
+    elif overlaps_fnspid and not FNSPID_AVAILABLE:
+        logger.info(f"FNSPID data not available for {ticker_upper} (module not imported)")
+    elif overlaps_fnspid:
+        logger.info(f"FNSPID data not processed for {ticker_upper} yet")
     
-    # Try Alpha Vantage if date range overlaps with 2024-2025
-    if overlaps_gap_period and not is_historical:
+    # Fetch from Alpha Vantage if date range overlaps 2024-2025
+    if overlaps_alpha_vantage:
         try:
             from services.alpha_vantage_provider import fetch_alpha_vantage_news
             
@@ -482,7 +496,7 @@ def get_news_for_agent(
             
             if articles:
                 # Provide condensed articles for the agent to cluster into moat-relevant themes
-                lines = [f"News for {ticker_upper} from {av_start} to {av_end}:\n"]
+                lines = [f"=== Recent News (Alpha Vantage: {av_start} to {av_end}) ===\n"]
                 lines.append(f"Articles retrieved: {len(articles)}\n")
                 
                 for i, article in enumerate(articles, 1):
@@ -498,12 +512,18 @@ def get_news_for_agent(
                         lines.append(f"   {summary}")
                     lines.append("")
                 
-                return "\n".join(lines)
+                news_sections.append("\n".join(lines))
+                logger.info(f"Retrieved Alpha Vantage news for {ticker_upper}")
             
         except ImportError:
             logger.warning("Alpha Vantage provider not available")
         except Exception as e:
-            logger.warning(f"Alpha Vantage fetch failed for {ticker_upper}, falling back to yfinance: {e}")
+            logger.warning(f"Alpha Vantage fetch failed for {ticker_upper}: {e}")
+    
+    # If we have news from multiple sources, combine them
+    if news_sections:
+        combined = "\n\n".join(news_sections)
+        return f"News for {ticker_upper} from {start_date} to {end_date}:\n\n{combined}"
     
     # Fall back to yfinance for recent news or if other sources unavailable
     try:
@@ -514,7 +534,7 @@ def get_news_for_agent(
         return f"Error fetching news for {ticker}: {e}"
     
     if not articles:
-        if is_historical and FNSPID_AVAILABLE:
+        if overlaps_fnspid and FNSPID_AVAILABLE:
             return (f"No news articles found for {ticker} between {start_date} and {end_date}.\n"
                     f"Historical news is available via FNSPID. Run the pipeline first:\n"
                     f"  python -m services.fnspid_news_pipeline --tickers {ticker}")
