@@ -306,7 +306,7 @@ async def chat_stream(
             return False
         except Exception:
             return False
-    
+
     def _extract_text_delta(token) -> str:
         """
         Extract only user-visible text from LangChain streamed message chunks.
@@ -337,17 +337,17 @@ async def chat_stream(
             # Skip messages with tool_call_id (these are tool responses)
             if hasattr(token, "tool_call_id") and token.tool_call_id:
                 return ""
-            
+
             # Check for content_blocks (some LangChain versions)
             blocks = getattr(token, "content_blocks", None)
             if blocks:
-                parts = []
-                for block in blocks:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text = block.get("text") or ""
-                        if text:
-                            parts.append(text)
-                return "".join(parts)
+                parts = []  
+            for block in blocks:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = block.get("text") or ""
+                    if text:
+                        parts.append(text)
+            return "".join(parts)
             
             # Fallback: Only return content from AIMessage types
             if token_type in ("AIMessage", "AIMessageChunk"):
