@@ -1,22 +1,30 @@
 """
 Response parser for converting agent text responses to structured data.
 
-The agent outputs responses following a 9-section structure as defined in the system prompt:
-1. Summary
-2. Key Events
-3. Price Behavior
-4. MOAT Analysis
-5. Plain-Language Explanation
-6. Concept Definitions
-7. Learning Options
-8. Comprehension Check
-9. Next Steps
+The agent outputs responses following the new 5-section structure plus moat assessment:
+1. Executive Takeaway
+2. Price Signal → Market Interpretation
+3. News Signals → Moat-Relevant Themes
+4. Moat Reasoning (Causal Analysis)
+5. Uncertainty & What Would Change the View
+6. Moat Assessment (Structured JSON Output)
 """
 
+import json
+import logging
 import re
 from typing import Dict, List, Optional, Tuple
 
-from api.models.responses import ParsedAnalysis, MoatAnalysis, LearningOption
+from api.models.responses import (
+    ParsedAnalysis, 
+    MoatAnalysis, 
+    LearningOption,
+    MoatAssessment,
+    MoatDimensionScore
+)
+from services.moat_scorer import validate_moat_assessment
+
+logger = logging.getLogger(__name__)
 
 
 class AgentResponseParser:
@@ -79,6 +87,12 @@ class AgentResponseParser:
         comprehension_questions = parser._extract_comprehension_questions(sections.get("comprehension_check", ""))
         next_steps = parser._extract_next_steps(sections.get("next_steps", ""))
         
+        # Extract structured moat assessment from JSON
+        moat_assessment = parser._extract_moat_assessment(response_text, start_date, end_date)
+        
+        # Remove the hidden moat assessment section from user-visible response
+        cleaned_response = parser._remove_hidden_moat_section(response_text)
+        
         return ParsedAnalysis(
             ticker=ticker,
             start_date=start_date,
@@ -92,7 +106,8 @@ class AgentResponseParser:
             learning_options=learning_options,
             comprehension_questions=comprehension_questions,
             next_steps=next_steps,
-            raw_response=response_text
+            moat_assessment=moat_assessment,
+            raw_response=cleaned_response
         )
     
     def _split_into_sections(self, text: str) -> Dict[str, str]:
@@ -349,4 +364,168 @@ class AgentResponseParser:
                 steps.append(line)
         
         return steps
+    
+    def _remove_hidden_moat_section(self, response_text: str) -> str:
+        """
+        Remove the hidden moat assessment section from user-visible response.
+        
+        Removes everything between [MOAT_ASSESSMENT_START] and [MOAT_ASSESSMENT_END] markers,
+        including a few lines before if they contain "INTERNAL" or similar headers.
+        
+        Args:
+            response_text: Full agent response text
+            
+        Returns:
+            Cleaned response text without hidden section
+        """
+        # Remove the hidden section and surrounding markers
+        marker_pattern = r'(?:---\s*)?(?:###\s*INTERNAL.*?\n)?(?:\s*\n)?\[MOAT_ASSESSMENT_START\].*?\[MOAT_ASSESSMENT_END\](?:\s*\n)?'
+        cleaned = re.sub(marker_pattern, '', response_text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Also remove any tool output that may have leaked through
+        cleaned = self._remove_tool_outputs(cleaned)
+        
+        # Clean up multiple consecutive blank lines
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        
+        return cleaned.strip()
+    
+    def _remove_tool_outputs(self, response_text: str) -> str:
+        """
+        Remove any raw tool outputs that may have leaked into the response.
+        
+        These are internal tool results that should never be shown to users:
+        - get_stock_prices output (price data summaries)
+        - get_stock_news output (news headlines lists)
+        - Alpha Vantage formatted news
+        
+        Args:
+            response_text: Response text that may contain tool outputs
+            
+        Returns:
+            Cleaned response text without tool outputs
+        """
+        # Pattern for get_stock_prices output
+        price_pattern = r'Price data for [A-Z]{1,5} from \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}:.*?(?=\n\n(?:###|##|\*\*|[A-Z])|$)'
+        
+        # Pattern for get_stock_news output (news headlines lists)
+        news_pattern = r'News (?:for|headlines for) [A-Z]{1,5}.*?Total articles: \d+\s*'
+        
+        # Pattern for Alpha Vantage news format
+        alpha_news_pattern = r'News for [A-Z]{1,5} from \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}.*?Articles retrieved: \d+.*?(?=\n\n(?:###|##|\*\*|[A-Z])|$)'
+        
+        # Pattern for news headline blocks (## YYYY-MM format)
+        headline_block_pattern = r'\n## \d{4}-\d{2}\n(?:- \[\d{4}-\d{2}-\d{2}\].*?\n)+'
+        
+        cleaned = response_text
+        
+        # Remove price data blocks
+        cleaned = re.sub(price_pattern, '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove news headline lists
+        cleaned = re.sub(news_pattern, '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove Alpha Vantage news format
+        cleaned = re.sub(alpha_news_pattern, '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove headline blocks
+        cleaned = re.sub(headline_block_pattern, '\n', cleaned, flags=re.DOTALL)
+        
+        # Remove "Notable movements" sections if they appear standalone
+        notable_pattern = r'Notable movements \(>[\d.]+% daily change\):.*?(?=\n\n|$)'
+        cleaned = re.sub(notable_pattern, '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        
+        return cleaned
+    
+    def _extract_moat_assessment(
+        self, 
+        response_text: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Optional[MoatAssessment]:
+        """
+        Extract structured moat assessment JSON from agent response.
+        
+        The JSON is hidden between [MOAT_ASSESSMENT_START] and [MOAT_ASSESSMENT_END] markers
+        and should be removed from the user-visible response.
+        
+        Args:
+            response_text: Full agent response text
+            start_date: Optional start date for assessment period
+            end_date: Optional end date for assessment period
+            
+        Returns:
+            MoatAssessment if found and valid, None otherwise
+        """
+        # Look for JSON within hidden markers
+        marker_pattern = r'\[MOAT_ASSESSMENT_START\](.*?)\[MOAT_ASSESSMENT_END\]'
+        marker_match = re.search(marker_pattern, response_text, re.DOTALL | re.IGNORECASE)
+        
+        if marker_match:
+            # Extract JSON from the hidden section
+            hidden_section = marker_match.group(1)
+            json_pattern = r'```json\s*(\{[\s\S]*?\})\s*```'
+            matches = re.findall(json_pattern, hidden_section, re.IGNORECASE)
+            
+            if matches:
+                json_str = matches[0]  # Take first JSON in hidden section
+            else:
+                logger.warning("No JSON found within MOAT_ASSESSMENT markers")
+                return None
+        else:
+            # Fallback: Look for any JSON code block (backwards compatibility)
+            json_pattern = r'```json\s*(\{[\s\S]*?\})\s*```'
+            matches = re.findall(json_pattern, response_text, re.IGNORECASE)
+            
+            if not matches:
+                logger.warning("No JSON moat assessment found in agent response")
+                return None
+            
+            # Take the last JSON block (most likely to be the moat assessment)
+            json_str = matches[-1]
+        
+        try:
+            # Parse JSON
+            data = json.loads(json_str)
+            
+            # Create dimension scores
+            def parse_dimension(dim_data: dict) -> MoatDimensionScore:
+                return MoatDimensionScore(
+                    score=float(dim_data.get("score", 0)),
+                    direction=dim_data.get("direction", "Stable"),
+                    confidence=dim_data.get("confidence", "Medium"),
+                    rationale=dim_data.get("rationale", "")
+                )
+            
+            # Build moat assessment
+            assessment = MoatAssessment(
+                switching_costs=parse_dimension(data.get("switching_costs", {})),
+                network_effects=parse_dimension(data.get("network_effects", {})),
+                intangible_assets=parse_dimension(data.get("intangible_assets", {})),
+                cost_advantages=parse_dimension(data.get("cost_advantages", {})),
+                regulatory_barriers=parse_dimension(data.get("regulatory_barriers", {})),
+                ecosystem_lockin=parse_dimension(data.get("ecosystem_lockin", {})),
+                overall_score=float(data.get("overall_score", 0)),
+                overall_rating=data.get("overall_rating", "None"),
+                overall_confidence=data.get("overall_confidence", "Low"),
+                assessment_period=data.get("assessment_period", f"{start_date} to {end_date}" if start_date and end_date else "Unknown")
+            )
+            
+            # Validate assessment
+            is_valid, error_msg = validate_moat_assessment(assessment)
+            if not is_valid:
+                logger.warning(f"Moat assessment validation failed: {error_msg}")
+                # Still return it but log the warning
+            
+            logger.info(f"Successfully extracted moat assessment: {assessment.overall_rating} "
+                       f"(score: {assessment.overall_score})")
+            
+            return assessment
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse moat assessment JSON: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error creating moat assessment: {e}")
+            return None
 

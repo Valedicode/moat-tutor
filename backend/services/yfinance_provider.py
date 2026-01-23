@@ -2,7 +2,7 @@
 YFinance Data Provider
 
 Fetches stock price data from Yahoo Finance with disk caching for performance.
-Supports a whitelist of tech companies with date range 2020-2025.
+Supports a whitelist of tech companies with date range 2015-2025 (matches structural moat window).
 """
 
 from __future__ import annotations
@@ -33,7 +33,8 @@ SUPPORTED_TICKERS = {
 }
 
 # Date range constraints
-MIN_DATE = "2020-01-01"
+# Updated to 2015 to support full structural moat window (2015-2025)
+MIN_DATE = "2015-01-01"
 MAX_DATE = "2025-12-31"
 
 # Cache validity period (24 hours)
@@ -92,7 +93,7 @@ def fetch_price_data(
     
     Args:
         ticker: Stock ticker symbol (must be in whitelist)
-        start_date: Start date in YYYY-MM-DD format (default: 2020-01-01)
+        start_date: Start date in YYYY-MM-DD format (default: 2015-01-01)
         end_date: End date in YYYY-MM-DD format (default: 2025-12-31)
         interval: Data interval (default: 1d for daily)
         use_cache: Whether to use cached data (default: True)
@@ -260,4 +261,3 @@ def get_cache_info() -> dict:
         "total_size_mb": round(total_size / (1024 * 1024), 2),
         "validity_hours": CACHE_VALIDITY_HOURS
     }
-
