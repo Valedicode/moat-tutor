@@ -85,6 +85,44 @@ export type ChartDataResponse = {
   adj_close?: number[];
 };
 
+export type WindowPolicy = {
+  output_mode: "rating" | "direction" | "signals";
+  allow_rating: boolean;
+  allow_scores: boolean;
+  require_disclaimer: boolean;
+};
+
+export type TimeWindow = {
+  label: string;
+  window_type: "structural" | "phase" | "signal";
+  start_date: string;
+  end_date: string;
+  duration_years: number;
+  description: string;
+  policy: WindowPolicy;
+};
+
+export type WindowedMoatReport = {
+  window_label: string;
+  window_type: "structural" | "phase" | "signal";
+  start_date: string;
+  end_date: string;
+  duration_years: number;
+  output_mode: "rating" | "direction" | "signals";
+  allows_rating: boolean;
+  requires_disclaimer: boolean;
+  guidance: string;
+  parsed_analysis: ParsedAnalysis;
+};
+
+export type MultiWindowReport = {
+  ticker: string;
+  generated_at: string;
+  structural: WindowedMoatReport;
+  phases: WindowedMoatReport[];
+  synthesis?: string | null;
+};
+
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   try {
@@ -360,6 +398,96 @@ export async function translateAudio(
       throw new Error(`Translation failed: ${error.message}`);
     }
     throw new Error("Translation failed: Unknown error");
+  }
+}
+
+// ============================================================================
+// Windowed Moat Analysis API
+// ============================================================================
+
+export async function getAvailableWindows(signal?: AbortSignal): Promise<Record<string, TimeWindow>> {
+  try {
+    return await fetchJson<Record<string, TimeWindow>>("/api/v1/moat/windows", {
+      method: "GET",
+      signal,
+    });
+  } catch (error) {
+    throw new Error(`Failed to fetch available windows: ${toErrorMessage(error)}`);
+  }
+}
+
+export async function analyzeWithWindow(params: {
+  ticker: string;
+  windowLabel: string;
+  signal?: AbortSignal;
+}): Promise<WindowedMoatReport> {
+  try {
+    const queryParams = new URLSearchParams({
+      ticker: params.ticker,
+      window_label: params.windowLabel,
+    });
+
+    return await fetchJson<WindowedMoatReport>(
+      `/api/v1/moat/analyze/window?${queryParams.toString()}`,
+      {
+        method: "POST",
+        signal: params.signal,
+      }
+    );
+  } catch (error) {
+    throw new Error(`Windowed moat analysis failed: ${toErrorMessage(error)}`);
+  }
+}
+
+export async function analyzeWithCustomWindow(params: {
+  ticker: string;
+  startDate: string;
+  endDate: string;
+  description?: string;
+  signal?: AbortSignal;
+}): Promise<WindowedMoatReport> {
+  try {
+    const queryParams = new URLSearchParams({
+      ticker: params.ticker,
+      start_date: params.startDate,
+      end_date: params.endDate,
+    });
+    if (params.description) {
+      queryParams.set("description", params.description);
+    }
+
+    return await fetchJson<WindowedMoatReport>(
+      `/api/v1/moat/analyze/custom?${queryParams.toString()}`,
+      {
+        method: "POST",
+        signal: params.signal,
+      }
+    );
+  } catch (error) {
+    throw new Error(`Custom window analysis failed: ${toErrorMessage(error)}`);
+  }
+}
+
+export async function analyzeComprehensive(params: {
+  ticker: string;
+  includePhases?: boolean;
+  signal?: AbortSignal;
+}): Promise<MultiWindowReport> {
+  try {
+    const queryParams = new URLSearchParams({
+      ticker: params.ticker,
+      include_phases: String(params.includePhases ?? true),
+    });
+
+    return await fetchJson<MultiWindowReport>(
+      `/api/v1/moat/analyze/comprehensive?${queryParams.toString()}`,
+      {
+        method: "POST",
+        signal: params.signal,
+      }
+    );
+  } catch (error) {
+    throw new Error(`Comprehensive analysis failed: ${toErrorMessage(error)}`);
   }
 }
 
