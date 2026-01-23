@@ -130,7 +130,12 @@ async def chat(
         parsed = None
         cleaned_response = agent_response  # Fallback to raw if parsing fails
         try:
-            parsed = AgentResponseParser.parse(agent_response)
+            parsed = AgentResponseParser.parse(
+                agent_response,
+                ticker=request.ticker,
+                start_date=request.start_date,
+                end_date=request.end_date
+            )
             # Use the cleaned response (with hidden sections removed) for user display
             if parsed and parsed.raw_response:
                 cleaned_response = parsed.raw_response
@@ -254,7 +259,12 @@ async def chat_stream(
             parsed = None
             cleaned_text = full_text  # Fallback to raw if parsing fails
             try:
-                parsed = AgentResponseParser.parse(full_text)
+                parsed = AgentResponseParser.parse(
+                    full_text,
+                    ticker=request.ticker,
+                    start_date=request.start_date,
+                    end_date=request.end_date
+                )
                 # Use the cleaned response (with hidden sections removed) for user display
                 if parsed and parsed.raw_response:
                     cleaned_text = parsed.raw_response
@@ -341,13 +351,13 @@ async def chat_stream(
             # Check for content_blocks (some LangChain versions)
             blocks = getattr(token, "content_blocks", None)
             if blocks:
-                parts = []  
-            for block in blocks:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text = block.get("text") or ""
-                    if text:
-                        parts.append(text)
-            return "".join(parts)
+                parts = []
+                for block in blocks:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text") or ""
+                        if text:
+                            parts.append(text)
+                return "".join(parts)
             
             # Fallback: Only return content from AIMessage types
             if token_type in ("AIMessage", "AIMessageChunk"):
