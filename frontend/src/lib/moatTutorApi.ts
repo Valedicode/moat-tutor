@@ -19,7 +19,42 @@ export type TranslationResponse = {
   message: string;
 };
 
-export type ParsedAnalysis = unknown;
+export type MoatDimensionScore = {
+  score: number;
+  direction: "Strengthening" | "Stable" | "Weakening";
+  confidence: "Low" | "Medium" | "High";
+  rationale: string;
+};
+
+export type MoatAssessment = {
+  switching_costs: MoatDimensionScore;
+  network_effects: MoatDimensionScore;
+  intangible_assets: MoatDimensionScore;
+  cost_advantages: MoatDimensionScore;
+  regulatory_barriers: MoatDimensionScore;
+  ecosystem_lockin: MoatDimensionScore;
+  overall_score: number;
+  overall_rating: "Wide" | "Narrow" | "None";
+  overall_confidence: "Low" | "Medium" | "High";
+  assessment_period: string;
+};
+
+export type ParsedAnalysis = {
+  ticker?: string;
+  start_date?: string;
+  end_date?: string;
+  summary?: string;
+  key_events?: string[];
+  price_behavior?: string;
+  moat_analysis?: unknown;
+  plain_explanation?: string;
+  concept_definitions?: Record<string, string>;
+  learning_options?: unknown[];
+  comprehension_questions?: string[];
+  next_steps?: string[];
+  moat_assessment?: MoatAssessment;
+  raw_response?: string;
+};
 
 export type ChatResponse = {
   message: ChatMessage;
@@ -248,6 +283,30 @@ export async function getChartData(params: {
     });
   } catch (error) {
     throw new Error(`Chart data request failed: ${toErrorMessage(error)}`);
+  }
+}
+
+export async function analyzeMoat(params: {
+  ticker: string;
+  startDate: string;
+  endDate: string;
+  expertiseLevel?: "beginner" | "intermediate" | "professional";
+  signal?: AbortSignal;
+}): Promise<ParsedAnalysis> {
+  try {
+    return await fetchJson<ParsedAnalysis>("/api/v1/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ticker: params.ticker,
+        start_date: params.startDate,
+        end_date: params.endDate,
+        expertise_level: params.expertiseLevel || "intermediate",
+      }),
+      signal: params.signal,
+    });
+  } catch (error) {
+    throw new Error(`Moat analysis request failed: ${toErrorMessage(error)}`);
   }
 }
 
