@@ -191,6 +191,53 @@ After your conclusion, add this structured JSON between the markers below. This 
 - Price primarily affects **confidence** and **direction**, not the score itself
 - News drives **mechanism-level changes** that justify score levels
 
+---
+
+## Time Window Policies (CRITICAL)
+
+**Window Duration Matters**
+
+The credibility of a moat rating depends on the time horizon. Follow these STRICT rules:
+
+### ≥ 8 Years: Full Structural Rating (GREEN LIGHT)
+- **Output**: Complete all 6 sections including moat rating (Wide/Narrow/None)
+- **Rationale**: Sufficient to assess durable competitive advantages across business cycles
+- **Focus**: Long-term structural drivers, ecosystem evolution, competitive dynamics over time
+- **Example**: 2015-2025 (11 years) → Full rating with high confidence
+
+### 3-7 Years: Direction Only (YELLOW LIGHT)
+- **Output**: Sections 1-5 + direction assessment (Strengthening/Stable/Weakening)
+- **Rationale**: Can identify trends but insufficient for structural rating
+- **Focus**: Moat evolution, competitive response, whether advantages are building or eroding
+- **Disclaimer Required**: "Note: This [X]-year window provides directional insight only. A structural moat rating requires ≥8 years to capture full business cycles."
+- **NO Overall Rating**: Do NOT output "Wide/Narrow/None" - only "Moat Direction: [Strengthening/Stable/Weakening]"
+- **Example**: 2019-2021 (3 years) → Strengthening moat during stress test, but no structural rating
+
+### < 3 Years: Signals Only (RED LIGHT)
+- **Output**: Tactical signals and market sentiment only
+- **Rationale**: Too short for any moat assessment - only market expectations and noise
+- **Focus**: Price momentum, sentiment shifts, tactical events, near-term catalysts
+- **Disclaimer Required**: "⚠️ Warning: This [X]-year window is too short for moat analysis. The output reflects tactical signals and market sentiment only, not structural competitive advantages."
+- **NO Moat Analysis**: Skip sections 4-6 entirely. Focus only on price behavior and news themes as market signals.
+- **Example**: 2024-2025 (1 year) → Signals only, no moat conclusion
+
+**When Analysis Window Information Is Provided:**
+
+If the system provides window metadata (start_date, end_date, duration_years, output_mode), you MUST:
+1. Check the `output_mode` field:
+   - `"rating"` → Full structural rating allowed
+   - `"direction"` → Direction only (Strengthening/Stable/Weakening), NO rating
+   - `"signals"` → Tactical signals only, NO moat analysis
+2. Follow the policy strictly - do not issue ratings when `output_mode` is "direction" or "signals"
+3. Include the required disclaimer for medium and short windows
+4. State the window duration explicitly in your opening: "Analyzing [TICKER] over [X] years ([START] to [END])..."
+
+**Default Behavior (No Window Info):**
+
+If no explicit window information is provided, calculate the duration from the dates and apply the rules above.
+
+---
+
 ## Response Modes
 
 ### Quick Response Mode
@@ -546,6 +593,44 @@ def invoke_agent(query: str, conversation_history: list[dict] = None) -> str:
         return result["messages"][-1].content if result["messages"] else "No response generated"
     else:
         return str(result)
+
+
+def invoke_agent_windowed(
+    query: str,
+    window_start: str,
+    window_end: str,
+    window_duration: float,
+    output_mode: str,
+    conversation_history: list[dict] = None
+) -> str:
+    """
+    Invoke the MoatTutor agent with explicit time window policy enforcement.
+    
+    This variant provides the agent with window metadata so it can enforce
+    the appropriate output policy (rating, direction, or signals only).
+    
+    Args:
+        query: Base natural language query
+        window_start: Window start date (YYYY-MM-DD)
+        window_end: Window end date (YYYY-MM-DD)
+        window_duration: Window duration in years
+        output_mode: One of "rating", "direction", or "signals"
+        conversation_history: Optional conversation history
+    
+    Returns:
+        The agent's response as a string
+    """
+    # Construct window-aware query with metadata
+    window_context = f"""
+[WINDOW METADATA]
+- Analysis Period: {window_start} to {window_end} ({window_duration:.1f} years)
+- Output Mode: {output_mode}
+- Policy: {"Full rating allowed" if output_mode == "rating" else "Direction only (no rating)" if output_mode == "direction" else "Signals only (no moat analysis)"}
+
+User Query: {query}
+"""
+    
+    return invoke_agent(window_context, conversation_history)
 
 
 def stream_agent_messages(query: str, conversation_history: list[dict] = None):
