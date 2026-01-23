@@ -491,3 +491,49 @@ export async function analyzeComprehensive(params: {
   }
 }
 
+// ============================================================================
+// Overall Moat Score API (2015-2025 Full Analysis)
+// ============================================================================
+
+export type OverallMoatScore = {
+  overall_score: number; // 0-5 scale
+  rating: "Wide" | "Narrow" | "None";
+  confidence: string;
+  time_range: string;
+  computed_at: string;
+  factors: {
+    network_effects: number;
+    switching_costs: number;
+    intangible_assets: number;
+    cost_advantages: number;
+    regulatory_barriers: number;
+  };
+  trend: "strengthening" | "stable" | "weakening";
+  summary: string;
+};
+
+export async function getOverallMoatScore(params: {
+  ticker: string;
+  startDate?: string;
+  endDate?: string;
+  signal?: AbortSignal;
+}): Promise<OverallMoatScore> {
+  try {
+    const { ticker, startDate, endDate } = params;
+    
+    // Build query params
+    const queryParams = new URLSearchParams({ ticker });
+    if (startDate) queryParams.append("start_date", startDate);
+    if (endDate) queryParams.append("end_date", endDate);
+    
+    return await fetchJson<OverallMoatScore>(
+      `/api/v1/moat/overall?${queryParams.toString()}`,
+      {
+        method: "GET",
+        signal: params.signal,
+      }
+    );
+  } catch (error) {
+    throw new Error(`Failed to fetch overall moat score: ${toErrorMessage(error)}`);
+  }
+}
