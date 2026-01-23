@@ -260,4 +260,3 @@ def get_cache_info() -> dict:
         "total_size_mb": round(total_size / (1024 * 1024), 2),
         "validity_hours": CACHE_VALIDITY_HOURS
     }
-
