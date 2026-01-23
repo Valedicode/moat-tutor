@@ -126,25 +126,29 @@ async def chat(
         # Invoke agent with conversation history
         agent_response = invoke_agent(enhanced_query, conversation_history)
         
-        # Create assistant message
+        # Try to parse the response into structured data
+        parsed = None
+        cleaned_response = agent_response  # Fallback to raw if parsing fails
+        try:
+            parsed = AgentResponseParser.parse(agent_response)
+            # Use the cleaned response (with hidden sections removed) for user display
+            if parsed and parsed.raw_response:
+                cleaned_response = parsed.raw_response
+        except Exception as parse_error:
+            # If parsing fails, we still return the raw response
+            # Log the error but don't fail the request
+            print(f"Warning: Failed to parse agent response: {parse_error}")
+        
+        # Create assistant message with cleaned content
         assistant_message = ChatMessage(
             id=f"msg-{uuid.uuid4()}",
             role="assistant",
-            content=agent_response,
+            content=cleaned_response,
             timestamp=datetime.utcnow().isoformat()
         )
         
         # Store assistant message
         store.add_message(session_id, assistant_message)
-        
-        # Try to parse the response into structured data
-        parsed = None
-        try:
-            parsed = AgentResponseParser.parse(agent_response)
-        except Exception as parse_error:
-            # If parsing fails, we still return the raw response
-            # Log the error but don't fail the request
-            print(f"Warning: Failed to parse agent response: {parse_error}")
         
         return ChatResponse(
             message=assistant_message,
@@ -221,6 +225,9 @@ async def chat_stream(
             # stream_agent_messages may return an async generator or a sync generator
             if hasattr(stream_iter, "__aiter__"):
                 async for token, metadata in stream_iter:
+                    # Skip tool-related messages using metadata if available
+                    if _should_skip_token(token, metadata):
+                        continue
                     delta = _extract_text_delta(token)
                     if not delta:
                         continue
@@ -230,6 +237,9 @@ async def chat_stream(
                         await asyncio.sleep(STREAM_TOKEN_DELAY_SEC)
             else:
                 for token, metadata in stream_iter:
+                    # Skip tool-related messages using metadata if available
+                    if _should_skip_token(token, metadata):
+                        continue
                     delta = _extract_text_delta(token)
                     if not delta:
                         continue
@@ -240,46 +250,112 @@ async def chat_stream(
 
             full_text = "".join(full_text_parts).strip()
 
+            # Parse and clean the response
+            parsed = None
+            cleaned_text = full_text  # Fallback to raw if parsing fails
+            try:
+                parsed = AgentResponseParser.parse(full_text)
+                # Use the cleaned response (with hidden sections removed) for user display
+                if parsed and parsed.raw_response:
+                    cleaned_text = parsed.raw_response
+            except Exception as parse_error:
+                print(f"Warning: Failed to parse agent response: {parse_error}")
+
             assistant_message = ChatMessage(
                 id=assistant_message_id,
                 role="assistant",
-                content=full_text,
+                content=cleaned_text,
                 timestamp=datetime.utcnow().isoformat()
             )
             store.add_message(session_id, assistant_message)
-
-            parsed = None
-            try:
-                parsed = AgentResponseParser.parse(full_text)
-            except Exception as parse_error:
-                print(f"Warning: Failed to parse agent response: {parse_error}")
 
             yield _sse("done", {"message": assistant_message.model_dump(), "session_id": session_id, "parsed": parsed.model_dump() if parsed else None})
         except Exception as e:
             yield _sse("error", {"error": str(e)})
 
+    def _should_skip_token(token, metadata) -> bool:
+        """
+        Determine if a streamed token should be skipped (not shown to user).
+        
+        Skips:
+        - Tool messages (results from get_stock_prices, get_stock_news, etc.)
+        - Tool call chunks (agent invoking tools)
+        - Function messages (legacy format)
+        """
+        try:
+            # Check token type
+            token_type = type(token).__name__
+            if token_type in ("ToolMessage", "ToolMessageChunk", "FunctionMessage", "FunctionMessageChunk"):
+                return True
+            
+            # Check metadata for langgraph_node info
+            if isinstance(metadata, dict):
+                node = metadata.get("langgraph_node", "")
+                # Skip tool-related nodes
+                if node in ("tools", "tool", "action"):
+                    return True
+            
+            # Check if token has tool_call_id (indicates tool response)
+            if hasattr(token, "tool_call_id") and token.tool_call_id:
+                return True
+            
+            # Check type attribute
+            if hasattr(token, "type") and token.type in ("tool", "function"):
+                return True
+            
+            return False
+        except Exception:
+            return False
+    
     def _extract_text_delta(token) -> str:
         """
         Extract only user-visible text from LangChain streamed message chunks.
 
-        We intentionally ignore tool_call chunks and other non-text blocks.
+        We intentionally ignore:
+        - tool_call chunks (agent calling tools)
+        - ToolMessage content (results from tools like get_stock_prices, get_stock_news)
+        - Only return AIMessage content destined for the user
         """
         try:
+            # Check the token/message type - skip tool-related messages
+            token_type = type(token).__name__
+            
+            # Skip ToolMessage content entirely (tool outputs)
+            if token_type == "ToolMessage" or token_type == "ToolMessageChunk":
+                return ""
+            
+            # Skip FunctionMessage (legacy tool calls)
+            if token_type == "FunctionMessage" or token_type == "FunctionMessageChunk":
+                return ""
+            
+            # Also check via type attribute if available
+            if hasattr(token, "type"):
+                msg_type = getattr(token, "type", "")
+                if msg_type in ("tool", "function"):
+                    return ""
+            
+            # Skip messages with tool_call_id (these are tool responses)
+            if hasattr(token, "tool_call_id") and token.tool_call_id:
+                return ""
+            
+            # Check for content_blocks (some LangChain versions)
             blocks = getattr(token, "content_blocks", None)
-            if not blocks:
-                # Some integrations stream plain content
+            if blocks:
+                parts = []
+                for block in blocks:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text") or ""
+                        if text:
+                            parts.append(text)
+                return "".join(parts)
+            
+            # Fallback: Only return content from AIMessage types
+            if token_type in ("AIMessage", "AIMessageChunk"):
                 content = getattr(token, "content", None)
                 if isinstance(content, str) and content:
                     return content
-                return ""
-
-            parts = []
-            for block in blocks:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text = block.get("text") or ""
-                    if text:
-                        parts.append(text)
-            return "".join(parts)
+            
+            return ""
         except Exception:
             return ""
 
