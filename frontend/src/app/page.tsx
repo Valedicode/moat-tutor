@@ -7,7 +7,7 @@ import { ActiveShell } from "@/components/ActiveShell";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Logo } from "@/components/Logo";
 import { nowStamp } from "@/utils/date";
-import { chat, chatStream, type StreamEvent } from "@/lib/moatTutorApi";
+import { chat, chatStream, type StreamEvent, type MoatAssessment } from "@/lib/moatTutorApi";
 import { availableCompanies } from "@/constants/companies";
 
 export default function Home() {
@@ -19,6 +19,7 @@ export default function Home() {
   const [startYear, setStartYear] = useState<number>(2015);
   const [endYear, setEndYear] = useState<number>(2015);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const [moatAssessment, setMoatAssessment] = useState<MoatAssessment | null>(null);
 
   const isActiveSession = messages.length > 0;
 
@@ -89,6 +90,22 @@ export default function Home() {
                 msg.id === placeholderId ? evt.data.message : msg,
               ),
             );
+            // Capture moat assessment from parsed response
+            if (evt.data.parsed?.moat_assessment) {
+              setMoatAssessment(evt.data.parsed.moat_assessment);
+              // Also cache it in localStorage for persistence
+              if (ticker && startDate && endDate) {
+                const cacheKey = `moat_${ticker}_${startDate}_${endDate}`;
+                try {
+                  localStorage.setItem(cacheKey, JSON.stringify({
+                    assessment: evt.data.parsed.moat_assessment,
+                    timestamp: Date.now(),
+                  }));
+                } catch (e) {
+                  console.warn("Failed to cache moat assessment:", e);
+                }
+              }
+            }
           } else if (evt.event === "error") {
             throw new Error(evt.data.error);
           }
@@ -101,6 +118,10 @@ export default function Home() {
         setMessages((prev) =>
           prev.map((msg) => (msg.id === placeholderId ? result.message : msg)),
         );
+        // Capture moat assessment from parsed response
+        if (result.parsed?.moat_assessment) {
+          setMoatAssessment(result.parsed.moat_assessment);
+        }
       } catch (fallbackError) {
         const message =
           fallbackError instanceof Error
@@ -163,6 +184,7 @@ export default function Home() {
           ticker={ticker}
           startDate={startDate}
           endDate={endDate}
+          moatAssessment={moatAssessment}
         />
       )}
     </main>
