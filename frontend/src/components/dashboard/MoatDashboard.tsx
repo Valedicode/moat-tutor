@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { StockChart, MoatRadar, type MoatScores } from "@/components/charts";
-import { getChartData, type ChartDataResponse } from "@/lib/moatTutorApi";
+import { getChartData, type ChartDataResponse, type MoatAssessment } from "@/lib/moatTutorApi";
 import { availableCompanies } from "@/constants/companies";
 
 interface MoatDashboardProps {
   ticker?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  initialMoatAssessment?: MoatAssessment | null;
 }
 
 // Mock MOAT scores for different companies
@@ -98,13 +99,23 @@ export function MoatDashboard({
   ticker = "NVDA",
   startDate = "2023-01-01",
   endDate = "2023-12-31",
+  initialMoatAssessment,
 }: MoatDashboardProps) {
   const [chartData, setChartData] = useState<ChartDataResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Get MOAT scores for the selected ticker
-  const moatScores = ticker ? (MOCK_MOAT_SCORES[ticker] || DEFAULT_SCORES) : DEFAULT_SCORES;
+  // Use the moat assessment passed from chat, or fallback to mock data
+  const moatAssessment = initialMoatAssessment;
+
+  // Convert MoatAssessment to MoatScores for radar chart
+  const moatScores: MoatScores = moatAssessment ? {
+    networkEffects: moatAssessment.network_effects.score,
+    switchingCosts: moatAssessment.switching_costs.score,
+    intangibleAssets: moatAssessment.intangible_assets.score,
+    costAdvantages: moatAssessment.cost_advantages.score,
+    efficientScale: moatAssessment.regulatory_barriers.score, // Map regulatory_barriers to efficientScale for now
+  } : (ticker ? (MOCK_MOAT_SCORES[ticker] || DEFAULT_SCORES) : DEFAULT_SCORES);
 
   // Get company name from ticker
   const companyName = ticker
@@ -246,15 +257,49 @@ export function MoatDashboard({
 
         {/* Moat Radar */}
         <div
-          className="flex flex-col items-center justify-center gap-4 rounded-xl border p-6"
+          className="flex flex-col gap-4 rounded-xl border p-6"
           style={{
             borderColor: "var(--border)",
             backgroundColor: "var(--background)",
             minHeight: "300px",
           }}
         >
+          {/* Moat Rating Badge - only shown when we have a real assessment */}
+          {moatAssessment && (
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                  Moat Rating
+                </span>
+                <p className="mt-1 text-lg font-bold" style={{ 
+                  color: moatAssessment.overall_rating === "Wide" ? "#10b981" : 
+                         moatAssessment.overall_rating === "Narrow" ? "#eab308" : "#ef4444" 
+                }}>
+                  {moatAssessment.overall_rating} Moat
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-xs uppercase tracking-wider" style={{ color: "var(--text-tertiary)" }}>
+                  Confidence
+                </span>
+                <p className="mt-1 text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
+                  {moatAssessment.overall_confidence}
+                </p>
+              </div>
+            </div>
+          )}
+
           {ticker ? (
-            <MoatRadar scores={moatScores} size={280} />
+            <div className="flex flex-col items-center gap-4">
+              <MoatRadar scores={moatScores} size={280} />
+              
+              {/* Hint when no assessment yet */}
+              {!moatAssessment && (
+                <p className="text-center text-xs" style={{ color: "var(--text-tertiary)" }}>
+                  Ask a question in the chat to analyze this company&apos;s moat
+                </p>
+              )}
+            </div>
           ) : (
             <div className="flex h-full items-center justify-center">
               <p className="text-sm" style={{ color: "var(--text-secondary)" }}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Message } from "@/types/chat";
 import { ChatInput, MessageBubble } from "@/components/chat";
 import { MoatDashboard } from "@/components/dashboard";
+import { MoatAssessment } from "@/lib/moatTutorApi";
 
 type ActiveShellProps = {
   messages: Message[];
@@ -12,6 +13,7 @@ type ActiveShellProps = {
   ticker?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  moatAssessment?: MoatAssessment | null;
 };
 
 export function ActiveShell({
@@ -23,6 +25,7 @@ export function ActiveShell({
   ticker,
   startDate,
   endDate,
+  moatAssessment,
 }: ActiveShellProps) {
   const [showPanel, setShowPanel] = useState(false);
 
@@ -102,7 +105,12 @@ export function ActiveShell({
       >
         {showPanel && (
           <div className="slide-in-panel w-full">
-            <MoatDashboard ticker={ticker} startDate={startDate} endDate={endDate} />
+            <MoatDashboard 
+              ticker={ticker} 
+              startDate={startDate} 
+              endDate={endDate} 
+              initialMoatAssessment={moatAssessment}
+            />
           </div>
         )}
       </section>

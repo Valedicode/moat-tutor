@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import chat, companies, analysis, sessions, health, charts, audio
+from api.routes import chat, companies, analysis, sessions, health, charts, audio, windowed
 from middleware.logging import LoggingMiddleware
 
 
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)  # /api/v1/sessions
     app.include_router(charts.router)  # /api/v1/charts
     app.include_router(audio.router)  # /api/audio
+    app.include_router(windowed.router)  # /api/v1/moat/windowed
 
     @app.get("/", tags=["root"])
     async def root() -> dict:
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
                 "sessions": "/api/v1/sessions",
                 "charts": "/api/v1/charts",
                 "audio": "/api/audio",
+                "windowed_moat": "/api/v1/moat",
             }
         }
 

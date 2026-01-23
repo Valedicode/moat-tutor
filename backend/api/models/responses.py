@@ -3,7 +3,7 @@ Response models for API endpoints.
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -74,6 +74,92 @@ class MoatAnalysis(BaseModel):
         }
 
 
+class MoatDimensionScore(BaseModel):
+    """Score for a single moat dimension."""
+    score: float = Field(..., ge=0, le=5, description="Strength score (0-5)")
+    direction: str = Field(..., description="Strengthening, Stable, or Weakening")
+    confidence: str = Field(..., description="Low, Medium, or High")
+    rationale: str = Field(..., description="One causal chain: Signal → Mechanism → Moat Impact")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "score": 4.5,
+                "direction": "Strengthening",
+                "confidence": "High",
+                "rationale": "Enterprise AI adoption (signal) increases switching costs (mechanism) as customers build infrastructure on CUDA platform (moat impact)."
+            }
+        }
+
+
+class MoatAssessment(BaseModel):
+    """
+    Complete moat assessment from agent analysis.
+    
+    Based on analysis of price development and financial news, this provides
+    quantified moat scores across six dimensions plus an overall rating.
+    """
+    # Dimension scores
+    switching_costs: MoatDimensionScore = Field(..., description="Cost/difficulty for customers to switch to competitors")
+    network_effects: MoatDimensionScore = Field(..., description="Value increases as more users join the platform")
+    intangible_assets: MoatDimensionScore = Field(..., description="Brand, patents, proprietary data, regulatory advantages")
+    cost_advantages: MoatDimensionScore = Field(..., description="Ability to produce goods/services cheaper due to scale or unique resources")
+    regulatory_barriers: MoatDimensionScore = Field(..., description="Regulatory protection or approval requirements")
+    ecosystem_lockin: MoatDimensionScore = Field(..., description="Integration complexity or proprietary standards")
+    
+    # Overall assessment
+    overall_score: float = Field(..., ge=0, le=5, description="Average of dimension scores")
+    overall_rating: str = Field(..., description="Wide, Narrow, or None")
+    overall_confidence: str = Field(..., description="Low, Medium, or High")
+    assessment_period: str = Field(..., description="Date range analyzed (e.g., '2024-01-01 to 2024-12-31')")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "switching_costs": {
+                    "score": 4.5,
+                    "direction": "Strengthening",
+                    "confidence": "High",
+                    "rationale": "Enterprise AI adoption increases switching costs as customers build on CUDA."
+                },
+                "network_effects": {
+                    "score": 3.8,
+                    "direction": "Stable",
+                    "confidence": "Medium",
+                    "rationale": "Developer ecosystem remains strong but not expanding materially."
+                },
+                "intangible_assets": {
+                    "score": 4.7,
+                    "direction": "Strengthening",
+                    "confidence": "High",
+                    "rationale": "Patent portfolio and CUDA platform strengthen brand in AI computing."
+                },
+                "cost_advantages": {
+                    "score": 4.0,
+                    "direction": "Stable",
+                    "confidence": "Medium",
+                    "rationale": "Scale advantages in R&D maintained but competition increasing."
+                },
+                "regulatory_barriers": {
+                    "score": 2.0,
+                    "direction": "Weakening",
+                    "confidence": "Medium",
+                    "rationale": "Export restrictions create uncertainty but not protective barriers."
+                },
+                "ecosystem_lockin": {
+                    "score": 4.8,
+                    "direction": "Strengthening",
+                    "confidence": "High",
+                    "rationale": "CUDA ecosystem lock-in deepens as AI workloads become more complex."
+                },
+                "overall_score": 4.0,
+                "overall_rating": "Wide",
+                "overall_confidence": "High",
+                "assessment_period": "2024-01-01 to 2024-12-31"
+            }
+        }
+
+
 class LearningOption(BaseModel):
     """A learning path option for the user."""
     id: str = Field(..., description="Unique option identifier")
@@ -135,27 +221,28 @@ class ParsedAnalysis(BaseModel):
     """
     Structured analysis parsed from the agent's response.
     
-    This represents the 9-section structure defined in the agent's system prompt:
-    1. Summary
-    2. Key Events
-    3. Price Behavior
-    4. MOAT Analysis
-    5. Plain-Language Explanation
-    6. Concept Definitions
-    7. Learning Options
-    8. Comprehension Check
-    9. Next Steps
+    This represents the 5-section structure defined in the agent's system prompt:
+    1. Executive Takeaway
+    2. Price Signal → Market Interpretation
+    3. News Signals → Moat-Relevant Themes
+    4. Moat Reasoning (Causal Analysis)
+    5. Uncertainty & What Would Change the View
+    
+    Plus the structured moat assessment with dimension scores.
     """
     ticker: Optional[str] = Field(None, description="Stock ticker symbol")
     start_date: Optional[str] = Field(None, description="Analysis start date")
     end_date: Optional[str] = Field(None, description="Analysis end date")
     
     # Core Analysis Sections (1-5)
-    summary: Optional[str] = Field(None, description="2-3 sentence overview")
+    summary: Optional[str] = Field(None, description="Executive takeaway (max 4 sentences)")
     key_events: List[str] = Field(default_factory=list, description="Major news or developments")
-    price_behavior: Optional[str] = Field(None, description="How the stock moved")
-    moat_analysis: Optional[MoatAnalysis] = Field(None, description="MOAT characteristics analysis")
-    plain_explanation: Optional[str] = Field(None, description="Simple terms explanation")
+    price_behavior: Optional[str] = Field(None, description="Price signal and market interpretation")
+    moat_analysis: Optional[MoatAnalysis] = Field(None, description="MOAT characteristics analysis (legacy)")
+    plain_explanation: Optional[str] = Field(None, description="Moat reasoning with causal chains")
+    
+    # Structured Moat Assessment (new)
+    moat_assessment: Optional[MoatAssessment] = Field(None, description="Quantified moat scores and rating")
     
     # Teaching Layer (6)
     concept_definitions: Dict[str, str] = Field(
@@ -210,6 +297,90 @@ class ParsedAnalysis(BaseModel):
                 "next_steps": [
                     "Would you like a quiz on today's concepts?"
                 ]
+            }
+        }
+
+
+class WindowedMoatReport(BaseModel):
+    """
+    Windowed moat analysis report with time-window-specific context.
+    
+    Includes the window metadata, policy constraints, and the analysis result.
+    """
+    # Window metadata
+    window_label: str = Field(..., description="Window identifier (e.g., 'structural', 'phase_foundation')")
+    window_type: Literal["structural", "phase", "signal"] = Field(..., description="Window type")
+    start_date: str = Field(..., description="Analysis start date (YYYY-MM-DD)")
+    end_date: str = Field(..., description="Analysis end date (YYYY-MM-DD)")
+    duration_years: float = Field(..., description="Window duration in years")
+    
+    # Policy constraints
+    output_mode: Literal["rating", "direction", "signals"] = Field(..., description="Output type allowed for this window")
+    allows_rating: bool = Field(..., description="Whether Wide/Narrow/None rating is included")
+    requires_disclaimer: bool = Field(..., description="Whether uncertainty disclaimer is required")
+    guidance: str = Field(..., description="User-facing guidance for this window")
+    
+    # Analysis result
+    parsed_analysis: ParsedAnalysis = Field(..., description="Structured analysis for this window")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "window_label": "phase_acceleration",
+                "window_type": "phase",
+                "start_date": "2019-01-01",
+                "end_date": "2021-12-31",
+                "duration_years": 3.0,
+                "output_mode": "direction",
+                "allows_rating": False,
+                "requires_disclaimer": True,
+                "guidance": "📊 Medium window (3.0 years): Direction only. Sufficient for moat evolution trends but not full structural rating.",
+                "parsed_analysis": {
+                    "ticker": "NVDA",
+                    "summary": "Moat strengthening during stress test phase...",
+                    "raw_response": "..."
+                }
+            }
+        }
+
+
+class MultiWindowReport(BaseModel):
+    """
+    Combined report from multiple time windows (e.g., structural + all phases).
+    
+    Provides a comprehensive view of moat evolution over time.
+    """
+    ticker: str = Field(..., description="Stock ticker symbol")
+    generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat(), description="Report generation timestamp")
+    
+    # Primary window (structural)
+    structural: WindowedMoatReport = Field(..., description="Structural moat assessment (10+ years)")
+    
+    # Phase windows (contextual layers)
+    phases: List[WindowedMoatReport] = Field(default_factory=list, description="Phase analysis windows (foundation, acceleration, monetization)")
+    
+    # Synthesis
+    synthesis: Optional[str] = Field(None, description="Cross-window synthesis and key insights")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "ticker": "NVDA",
+                "generated_at": "2026-01-23T12:00:00Z",
+                "structural": {
+                    "window_label": "structural",
+                    "window_type": "structural",
+                    "start_date": "2015-01-01",
+                    "end_date": "2025-12-31",
+                    "duration_years": 11.0,
+                    "output_mode": "rating",
+                    "allows_rating": True,
+                    "requires_disclaimer": False,
+                    "guidance": "✓ Structural window (11.0 years): Full rating enabled.",
+                    "parsed_analysis": {}
+                },
+                "phases": [],
+                "synthesis": "The moat strengthened across all phases, with acceleration during 2019-2021 being particularly notable..."
             }
         }
 
