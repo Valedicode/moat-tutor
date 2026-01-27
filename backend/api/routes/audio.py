@@ -115,8 +115,13 @@ async def translate_audio(
             detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)}MB"
         )
     
-    # Get settings and create OpenAI client
+    # Get settings and create OpenAI client (Whisper requires OpenAI API)
     settings = get_settings()
+    if not (settings.openai_api_key or "").strip():
+        raise HTTPException(
+            status_code=503,
+            detail="Speech-to-text requires OPENAI_API_KEY. Set it in .env or use llm_provider=openai.",
+        )
     client = OpenAI(api_key=settings.openai_api_key)
     
     # Create temporary file with proper cleanup (Windows-compatible)
