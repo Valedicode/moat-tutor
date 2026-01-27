@@ -4,18 +4,22 @@ import { useState, useEffect } from "react";
 import { getOverallMoatScore, type OverallMoatScore } from "@/lib/moatTutorApi";
 import { MoatRadar, type MoatScores } from "@/components/charts";
 
+/** Fixed analysis period for overall moat rating (not user-selected). */
+const MOAT_ANALYSIS_START = "2015-01-01";
+const MOAT_ANALYSIS_END = "2025-12-31";
+
 type OverallMoatViewProps = {
   ticker?: string | null;
+  /** Not used for API; kept for prop compatibility. Moat rating is always 2015-2025. */
   startDate?: string | null;
+  /** Not used for API; kept for prop compatibility. Moat rating is always 2015-2025. */
   endDate?: string | null;
-  useFullRange?: boolean; // True if user selected 2015-2025
+  /** Not used; moat rating always uses full range 2015-2025. */
+  useFullRange?: boolean;
 };
 
 export function OverallMoatView({
   ticker,
-  startDate,
-  endDate,
-  useFullRange,
 }: OverallMoatViewProps) {
   const [moatScore, setMoatScore] = useState<OverallMoatScore | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,12 +36,11 @@ export function OverallMoatView({
       setError(null);
 
       try {
-        // If user has selected full range (2015-2025), use cached analysis
-        // Otherwise, compute from scratch with their selected dates
+        // Always request full 2015-2025 range; moat rating is defined for this period only.
         const data = await getOverallMoatScore({
           ticker,
-          startDate: useFullRange ? "2015-01-01" : startDate || undefined,
-          endDate: useFullRange ? "2025-12-31" : endDate || undefined,
+          startDate: MOAT_ANALYSIS_START,
+          endDate: MOAT_ANALYSIS_END,
         });
         setMoatScore(data);
       } catch (err) {
@@ -49,7 +52,7 @@ export function OverallMoatView({
     };
 
     loadMoatScore();
-  }, [ticker, startDate, endDate, useFullRange]);
+  }, [ticker]);
 
   if (isLoading) {
     return (
@@ -60,12 +63,10 @@ export function OverallMoatView({
             style={{ color: "var(--accent)" }}
           />
           <p className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
-            {useFullRange ? "Loading Full Analysis" : "Computing Analysis"}
+            Loading Full Analysis
           </p>
           <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-            {useFullRange
-              ? "Retrieving cached 2015-2025 moat analysis..."
-              : "Analyzing moat characteristics for selected period..."}
+            Retrieving 2015-2025 moat analysis...
           </p>
         </div>
       </div>
@@ -219,7 +220,7 @@ export function OverallMoatView({
       </div>
 
       {/* Performance Optimization Note */}
-      {useFullRange && (
+      {(
         <div
           className="rounded-lg border p-3 text-xs"
           style={{
