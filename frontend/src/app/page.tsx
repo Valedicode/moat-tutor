@@ -185,6 +185,12 @@ export default function Home() {
           startDate={startDate}
           endDate={endDate}
           moatAssessment={moatAssessment}
+          selectedCompanyId={selectedCompanyId}
+          onCompanyChange={setSelectedCompanyId}
+          startYear={startYear}
+          endYear={endYear}
+          onStartYearChange={setStartYear}
+          onEndYearChange={setEndYear}
         />
       )}
     </main>

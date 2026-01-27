@@ -9,24 +9,30 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """
     Application settings loaded from environment variables.
-    
+
     All settings are loaded from .env file or environment variables.
     See env.example for available configuration options.
+
+    openai_api_key is only required when llm_provider="openai".
+    When llm_provider="local" (Ollama), OpenAI key is not used.
     """
-    
+
     # LLM Provider Configuration
     llm_provider: str = Field(default="openai", description="LLM provider (openai or local)")
     llm_streaming: bool = Field(default=True, description="Enable streaming responses")
-    
-    # OpenAI Configuration
-    openai_api_key: str = Field(..., description="OpenAI API key (required)")
+
+    # OpenAI Configuration (required only when llm_provider="openai")
+    openai_api_key: str | None = Field(
+        default=None,
+        description="OpenAI API key (required when llm_provider=openai)",
+    )
     openai_model: str = Field(default="gpt-5-nano", description="OpenAI model to use")
     
     # Local Model Configuration
@@ -39,9 +45,18 @@ class Settings(BaseSettings):
     # Streaming Configuration
     stream_token_delay_ms: int = Field(
         default=0,
-        description="Artificial delay between stream tokens (for testing)"
+        description="Artificial delay between stream tokens (for testing)",
     )
-    
+
+    @model_validator(mode="after")
+    def require_openai_key_when_openai_provider(self) -> "Settings":
+        if self.llm_provider == "openai" and not (self.openai_api_key or "").strip():
+            raise ValueError(
+                "openai_api_key is required when llm_provider is 'openai'. "
+                "Set OPENAI_API_KEY in .env or use llm_provider=local for Ollama."
+            )
+        return self
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
