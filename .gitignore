@@ -61,3 +61,6 @@ backend/data/news/*.json
 # Generated cache and embeddings (keep structure, exclude generated data)
 backend/data/fnspid_cache/
 backend/data/fnspid_embeddings/
+
+# Generated fundamental data
+backend/data/fundamentals/**/*.json
