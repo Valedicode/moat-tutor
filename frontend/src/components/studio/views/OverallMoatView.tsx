@@ -5,30 +5,34 @@ import { getOverallMoatScore, type OverallMoatScore } from "@/lib/moatTutorApi";
 import { MoatRadar, type MoatScores } from "@/components/charts";
 
 /** Fixed analysis period for overall moat rating (not user-selected). */
-const MOAT_ANALYSIS_START = "2015-01-01";
+const MOAT_ANALYSIS_START = "2000-01-01";
 const MOAT_ANALYSIS_END = "2025-12-31";
 
 type OverallMoatViewProps = {
   ticker?: string | null;
-  /** Not used for API; kept for prop compatibility. Moat rating is always 2015-2025. */
+  /** Not used for API; kept for prop compatibility. Moat rating is always 2000-2025. */
   startDate?: string | null;
-  /** Not used for API; kept for prop compatibility. Moat rating is always 2015-2025. */
+  /** Not used for API; kept for prop compatibility. Moat rating is always 2000-2025. */
   endDate?: string | null;
-  /** Not used; moat rating always uses full range 2015-2025. */
+  /** Not used; moat rating always uses full range 2000-2025. */
   useFullRange?: boolean;
+  /** Whether the card is currently expanded (triggers data loading) */
+  isExpanded?: boolean;
 };
 
 export function OverallMoatView({
   ticker,
+  isExpanded = false,
 }: OverallMoatViewProps) {
   const [moatScore, setMoatScore] = useState<OverallMoatScore | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
     const loadMoatScore = async () => {
-      if (!ticker) {
-        setIsLoading(false);
+      // Only load when expanded and not already loaded
+      if (!ticker || !isExpanded || hasLoaded) {
         return;
       }
 
@@ -36,13 +40,15 @@ export function OverallMoatView({
       setError(null);
 
       try {
-        // Always request full 2015-2025 range; moat rating is defined for this period only.
+        // Always request full 2000-2025 range; moat rating is defined for this period only.
+        // Note: This is a long-running analysis (can take 30-60 seconds)
         const data = await getOverallMoatScore({
           ticker,
           startDate: MOAT_ANALYSIS_START,
           endDate: MOAT_ANALYSIS_END,
         });
         setMoatScore(data);
+        setHasLoaded(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load moat score");
         console.error("Overall moat score error:", err);
@@ -52,7 +58,17 @@ export function OverallMoatView({
     };
 
     loadMoatScore();
-  }, [ticker]);
+  }, [ticker, isExpanded, hasLoaded]);
+
+  if (!isExpanded && !hasLoaded) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+          Click to load comprehensive moat analysis
+        </p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -66,7 +82,7 @@ export function OverallMoatView({
             Loading Full Analysis
           </p>
           <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-            Retrieving 2015-2025 moat analysis...
+            Analyzing 20+ years of data (this may take 30-60 seconds)...
           </p>
         </div>
       </div>
