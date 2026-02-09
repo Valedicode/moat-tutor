@@ -9,7 +9,7 @@ type DateRangePickerCompactProps = {
   onEndYearChange: (year: number) => void;
 };
 
-const MIN_YEAR = 2015;
+const MIN_YEAR = 2000;
 const MAX_YEAR = 2025;
 
 export function DateRangePickerCompact({

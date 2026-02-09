@@ -492,7 +492,7 @@ export async function analyzeComprehensive(params: {
 }
 
 // ============================================================================
-// Overall Moat Score API (2015-2025 Full Analysis)
+// Overall Moat Score API (2000-2025 Full Analysis)
 // ============================================================================
 
 export type OverallMoatScore = {

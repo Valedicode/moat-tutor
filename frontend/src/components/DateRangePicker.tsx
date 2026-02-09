@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react";
 
 type DateRangePickerProps = {
-  startYear: number; // Start year (2015-2025)
-  endYear: number; // End year (2015-2025)
+  startYear: number; // Start year (2000-2025)
+  endYear: number; // End year (2000-2025)
   onStartYearChange: (year: number) => void;
   onEndYearChange: (year: number) => void;
 };
 
-const MIN_YEAR = 2015;
+const MIN_YEAR = 2000;
 const MAX_YEAR = 2025;
 
 export function DateRangePicker({
@@ -72,7 +72,7 @@ export function DateRangePicker({
           className="text-sm"
           style={{ color: "#595959" }}
         >
-          Select start and end year (2015-2025)
+          Select start and end year (2000-2025)
         </p>
       </div>
 
@@ -196,37 +196,58 @@ export function DateRangePicker({
           />
         </div>
 
-        {/* Year Labels Below Slider */}
+        {/* Year Labels Below Slider - Show milestone years (every 5 years) + selected years */}
         <div className="flex justify-between text-xs" style={{ color: "#808080", paddingLeft: "10px", paddingRight: "10px" }}>
-          {Array.from({ length: MAX_YEAR - MIN_YEAR + 1 }, (_, i) => MIN_YEAR + i).map((year) => (
-            <button
-              key={year}
-              type="button"
-              onClick={() => {
-                // If clicking closer to start, set start; otherwise set end
-                const startDistance = Math.abs(year - localStartYear);
-                const endDistance = Math.abs(year - localEndYear);
-                if (startDistance <= endDistance && year <= localEndYear) {
-                  setLocalStartYear(year);
-                  onStartYearChange(year);
-                } else if (year >= localStartYear) {
-                  setLocalEndYear(year);
-                  onEndYearChange(year);
-                }
-              }}
-              className="transition-opacity hover:opacity-70 hover:underline"
-              style={{
-                fontWeight: year === localStartYear || year === localEndYear ? 600 : 400,
-                color:
-                  year >= localStartYear && year <= localEndYear
-                    ? "var(--accent)"
-                    : "#808080",
-              }}
-              aria-label={`Set year to ${year}`}
-            >
-              {year}
-            </button>
-          ))}
+          {(() => {
+            // Create milestone years (every 5 years)
+            const milestoneYears = [];
+            for (let year = MIN_YEAR; year <= MAX_YEAR; year += 5) {
+              milestoneYears.push(year);
+            }
+            // Add MAX_YEAR if it's not already included
+            if (!milestoneYears.includes(MAX_YEAR)) {
+              milestoneYears.push(MAX_YEAR);
+            }
+            // Add selected years if they're not milestones
+            if (!milestoneYears.includes(localStartYear)) {
+              milestoneYears.push(localStartYear);
+            }
+            if (!milestoneYears.includes(localEndYear)) {
+              milestoneYears.push(localEndYear);
+            }
+            // Sort and deduplicate
+            const displayYears = [...new Set(milestoneYears)].sort((a, b) => a - b);
+            
+            return displayYears.map((year) => (
+              <button
+                key={year}
+                type="button"
+                onClick={() => {
+                  // If clicking closer to start, set start; otherwise set end
+                  const startDistance = Math.abs(year - localStartYear);
+                  const endDistance = Math.abs(year - localEndYear);
+                  if (startDistance <= endDistance && year <= localEndYear) {
+                    setLocalStartYear(year);
+                    onStartYearChange(year);
+                  } else if (year >= localStartYear) {
+                    setLocalEndYear(year);
+                    onEndYearChange(year);
+                  }
+                }}
+                className="transition-opacity hover:opacity-70 hover:underline"
+                style={{
+                  fontWeight: year === localStartYear || year === localEndYear ? 600 : 400,
+                  color:
+                    year >= localStartYear && year <= localEndYear
+                      ? "var(--accent)"
+                      : "#808080",
+                }}
+                aria-label={`Set year to ${year}`}
+              >
+                {year}
+              </button>
+            ));
+          })()}
         </div>
 
         <p
