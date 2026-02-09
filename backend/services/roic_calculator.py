@@ -21,6 +21,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 from services.fundamentals_provider import get_fundamental_data
@@ -115,6 +116,36 @@ def calculate_roic(nopat: float, invested_capital: float) -> float:
     
     roic = nopat / invested_capital
     return roic
+
+
+def calculate_economic_profit(
+    roic: float,
+    wacc: float,
+    invested_capital: float
+) -> dict:
+    """
+    Calculate Economic Profit (excess returns above cost of capital).
+    
+    Economic Profit = (ROIC - WACC) x Invested Capital
+    
+    This is the dollar amount of value created (or destroyed) above what
+    investors require. Positive economic profit = moat evidence.
+    
+    Args:
+        roic: Return on Invested Capital (decimal, e.g. 0.30 for 30%)
+        wacc: Weighted Average Cost of Capital (decimal, e.g. 0.10 for 10%)
+        invested_capital: Total invested capital in dollars
+        
+    Returns:
+        Dict with spread_pct, economic_profit (dollar amount)
+    """
+    spread = roic - wacc
+    economic_profit = spread * invested_capital
+    
+    return {
+        "spread_pct": round(spread * 100, 2),
+        "economic_profit": round(economic_profit, 0),
+    }
 
 
 def calculate_effective_tax_rate(
@@ -313,7 +344,147 @@ def calculate_roic_time_series(
     df["roic_pct"] = df["roic"] * 100
     df["tax_rate_pct"] = df["tax_rate"] * 100
     
+    # Add economic profit columns (ROIC - WACC spread and dollar amount)
+    df["roic_wacc_spread"] = df["roic"] - DEFAULT_WACC
+    df["roic_wacc_spread_pct"] = df["roic_wacc_spread"] * 100
+    df["economic_profit"] = df["roic_wacc_spread"] * df["invested_capital"]
+    
     return df
+
+
+def estimate_fade_period(
+    df: pd.DataFrame,
+    wacc: float = DEFAULT_WACC
+) -> dict:
+    """
+    Estimate how long excess returns (ROIC > WACC) can be sustained.
+    
+    Uses linear regression on ROIC time series to project when ROIC
+    would converge to WACC. Classifies into three stages:
+    - Stage I (Explicit): Recent actual ROIC data (last 5 years)
+    - Stage II (Fade): Projected years until ROIC converges to WACC  
+    - Stage III (Terminal): ROIC = WACC (no excess returns)
+    
+    Args:
+        df: DataFrame with 'year' and 'roic' columns (from calculate_roic_time_series)
+        wacc: Cost of capital threshold
+        
+    Returns:
+        Dict with estimated_fade_years, stage classification, moat durability assessment
+    """
+    if df.empty or len(df) < 3:
+        return {
+            "estimated_fade_years": None,
+            "stage": "insufficient_data",
+            "durability": "unknown",
+            "explanation": "Insufficient data to estimate fade period."
+        }
+    
+    # Sort by year ascending for regression
+    sorted_df = df.sort_values("year", ascending=True)
+    years = sorted_df["year"].values.astype(float)
+    roics = sorted_df["roic"].values
+    
+    # Current average ROIC
+    avg_roic = float(roics.mean())
+    recent_roic = float(roics[-3:].mean()) if len(roics) >= 3 else avg_roic
+    
+    # If ROIC is already below WACC, no moat
+    if avg_roic <= wacc:
+        return {
+            "estimated_fade_years": 0,
+            "stage": "terminal",
+            "durability": "none",
+            "explanation": (
+                f"Average ROIC ({avg_roic*100:.1f}%) is at or below cost of capital "
+                f"({wacc*100:.1f}%). No excess returns to fade."
+            )
+        }
+    
+    # Linear regression: ROIC = slope * year + intercept
+    try:
+        slope, intercept = np.polyfit(years, roics, 1)
+    except (np.linalg.LinAlgError, ValueError):
+        slope = 0.0
+        intercept = avg_roic
+    
+    # Project when ROIC crosses WACC (solve: slope * year + intercept = wacc)
+    if slope >= 0:
+        # ROIC is stable or improving -- moat not fading
+        if recent_roic > wacc * 2:
+            fade_years = 20
+            durability = "very_strong"
+        elif recent_roic > wacc * 1.5:
+            fade_years = 15
+            durability = "strong"
+        else:
+            fade_years = 10
+            durability = "moderate"
+        
+        explanation = (
+            f"ROIC trend is {'improving' if slope > 0.001 else 'stable'} "
+            f"(slope: {slope*100:+.2f}% per year). "
+            f"Recent ROIC ({recent_roic*100:.1f}%) is {recent_roic/wacc:.1f}x the cost of capital. "
+            f"Estimated {fade_years}+ years of excess returns."
+        )
+    else:
+        # ROIC is declining -- calculate crossover year
+        last_year = float(years[-1])
+        crossover_year = (wacc - intercept) / slope if slope != 0 else last_year + 50
+        fade_years = max(0, int(crossover_year - last_year))
+        
+        if fade_years > 20:
+            durability = "strong"
+            fade_years = 20  # Cap at 20
+        elif fade_years > 10:
+            durability = "moderate"
+        elif fade_years > 5:
+            durability = "weak"
+        else:
+            durability = "eroding"
+        
+        explanation = (
+            f"ROIC trend is declining ({slope*100:+.2f}% per year). "
+            f"At current trajectory, ROIC would reach cost of capital "
+            f"({wacc*100:.1f}%) in approximately {fade_years} years. "
+        )
+        if durability == "eroding":
+            explanation += "The moat appears to be eroding rapidly."
+        elif durability == "weak":
+            explanation += "The moat has limited remaining durability."
+    
+    # Stage classification
+    if fade_years >= 15:
+        stage = "wide_moat"
+        stage_description = (
+            f"Stage I (actual, last 5yr): ROIC ~{recent_roic*100:.1f}%. "
+            f"Stage II (fade): {fade_years}+ years until ROIC converges to WACC. "
+            f"Stage III (terminal): ROIC = WACC ({wacc*100:.1f}%)."
+        )
+    elif fade_years >= 8:
+        stage = "narrow_moat"
+        stage_description = (
+            f"Stage I (actual): ROIC ~{recent_roic*100:.1f}%. "
+            f"Stage II (fade): ~{fade_years} years until convergence. "
+            f"Stage III (terminal): ROIC = WACC."
+        )
+    else:
+        stage = "no_moat"
+        stage_description = (
+            f"Stage I (actual): ROIC ~{recent_roic*100:.1f}%. "
+            f"Stage II (fade): ~{fade_years} years -- rapid convergence expected. "
+            f"Stage III (terminal): Approaching."
+        )
+    
+    return {
+        "estimated_fade_years": fade_years,
+        "stage": stage,
+        "durability": durability,
+        "roic_slope_pct_per_year": round(slope * 100, 3),
+        "recent_roic_pct": round(recent_roic * 100, 2),
+        "stage_description": stage_description,
+        "explanation": explanation,
+    }
 
 
 def check_roic_hurdle(
@@ -394,9 +565,16 @@ def check_roic_hurdle(
     else:
         trend = "insufficient_data"
     
-    # Build annual data list
+    # Calculate excess profit metrics
+    avg_spread = avg_roic - wacc
+    avg_invested_capital = float(df["invested_capital"].mean())
+    avg_economic_profit = avg_spread * avg_invested_capital
+    cumulative_economic_profit = float(df["economic_profit"].sum()) if "economic_profit" in df.columns else 0.0
+    
+    # Build annual data list with economic profit
     annual_data = []
     for _, row in df.iterrows():
+        ep = calculate_economic_profit(float(row["roic"]), wacc, float(row["invested_capital"]))
         annual_data.append({
             "year": int(row["year"]),
             "roic": round(float(row["roic"]), 4),
@@ -404,11 +582,16 @@ def check_roic_hurdle(
             "above_wacc": bool(row["roic"] > wacc),
             "nopat": round(float(row["nopat"]), 0),
             "invested_capital": round(float(row["invested_capital"]), 0),
+            "roic_wacc_spread_pct": ep["spread_pct"],
+            "economic_profit": ep["economic_profit"],
         })
     
     # Determine if hurdle passed
     # Criteria: Average ROIC > WACC AND at least 70% of years above WACC
     hurdle_passed = (avg_roic > wacc) and (years_above_hurdle_pct >= 70)
+    
+    # Estimate fade period
+    fade = estimate_fade_period(df, wacc)
     
     return {
         "ticker": ticker.upper(),
@@ -428,6 +611,12 @@ def check_roic_hurdle(
         "years_above_wacc": years_above_wacc,
         "years_above_hurdle_pct": round(years_above_hurdle_pct, 1),
         "roic_trend": trend,
+        # Excess profit metrics (NEW)
+        "avg_roic_wacc_spread_pct": round(avg_spread * 100, 2),
+        "avg_economic_profit": round(avg_economic_profit, 0),
+        "cumulative_economic_profit": round(cumulative_economic_profit, 0),
+        # Fade period (NEW)
+        "fade_period": fade,
         "annual_data": annual_data,
         "calculated_at": datetime.now().isoformat()
     }
@@ -505,3 +694,147 @@ def compare_roic_to_peers(
         "peer_data": peer_data,
         "calculated_at": datetime.now().isoformat()
     }
+
+
+def compare_moat_profiles(
+    ticker: str,
+    peer_tickers: list[str],
+    years: int = 10,
+    use_cache: bool = True
+) -> dict:
+    """
+    Multi-dimensional peer comparison using standardized metrics.
+    
+    Compares across:
+    - ROIC spread (ROIC - WACC)
+    - Operating margin
+    - Revenue growth consistency
+    - Economic profit
+    - Fade period estimate
+    
+    This provides a standardized, globally comparable methodology.
+    
+    Args:
+        ticker: Primary ticker to analyze
+        peer_tickers: List of peer ticker symbols
+        years: Number of years to analyze
+        use_cache: Whether to use cached data
+        
+    Returns:
+        Dict with multi-dimensional comparison table
+    """
+    logger.info(f"Comparing moat profiles: {ticker} vs {peer_tickers}")
+    
+    all_tickers = [ticker.upper()] + [p.upper() for p in peer_tickers]
+    profiles = []
+    
+    for t in all_tickers:
+        profile = _build_company_profile(t, years=years, use_cache=use_cache)
+        profiles.append(profile)
+    
+    if not profiles:
+        return {"error": "No data available for comparison."}
+    
+    # Find the primary ticker's profile
+    primary = profiles[0]
+    peers = profiles[1:]
+    
+    # Calculate peer averages for each metric
+    peer_metrics = {}
+    metric_keys = [
+        "avg_roic_pct", "roic_wacc_spread_pct", "avg_op_margin_pct",
+        "avg_revenue_growth_pct", "avg_economic_profit", "fade_years"
+    ]
+    
+    for key in metric_keys:
+        peer_values = [p.get(key) for p in peers if p.get(key) is not None]
+        if peer_values:
+            peer_metrics[key] = round(float(np.mean(peer_values)), 2)
+        else:
+            peer_metrics[key] = None
+    
+    # Build comparison
+    comparison = {
+        "ticker": ticker.upper(),
+        "period": primary.get("period", "N/A"),
+        "primary_profile": primary,
+        "peer_profiles": peers,
+        "peer_averages": peer_metrics,
+        "advantages": {},
+        "calculated_at": datetime.now().isoformat(),
+    }
+    
+    # Determine advantages
+    for key in metric_keys:
+        primary_val = primary.get(key)
+        peer_avg = peer_metrics.get(key)
+        
+        if primary_val is not None and peer_avg is not None and peer_avg != 0:
+            diff = primary_val - peer_avg
+            comparison["advantages"][key] = {
+                "primary": primary_val,
+                "peer_avg": peer_avg,
+                "difference": round(diff, 2),
+                "advantage": diff > 0,
+            }
+    
+    return comparison
+
+
+def _build_company_profile(
+    ticker: str,
+    years: int = 10,
+    use_cache: bool = True
+) -> dict:
+    """Build a standardized financial profile for a single company."""
+    profile = {"ticker": ticker.upper()}
+    
+    try:
+        # Get ROIC hurdle data (includes economic profit and fade)
+        hurdle = check_roic_hurdle(ticker, years=years, use_cache=use_cache)
+        
+        if "error" in hurdle:
+            profile["error"] = hurdle["error"]
+            return profile
+        
+        profile["period"] = hurdle.get("period")
+        profile["avg_roic_pct"] = hurdle.get("avg_roic_pct")
+        profile["roic_wacc_spread_pct"] = hurdle.get("avg_roic_wacc_spread_pct")
+        profile["hurdle_passed"] = hurdle.get("hurdle_passed")
+        profile["roic_trend"] = hurdle.get("roic_trend")
+        profile["avg_economic_profit"] = hurdle.get("avg_economic_profit")
+        
+        # Fade period
+        fade = hurdle.get("fade_period", {})
+        profile["fade_years"] = fade.get("estimated_fade_years")
+        profile["fade_durability"] = fade.get("durability")
+        
+        # Get financial data for margin analysis
+        fundamental_data = get_fundamental_data(ticker, use_cache=use_cache)
+        df = extract_annual_financials(fundamental_data)
+        
+        if not df.empty and len(df) >= 3:
+            df = df.sort_values("year", ascending=True)
+            
+            # Operating margin
+            revenues = df["revenue"].values
+            op_incomes = df["operating_income"].values
+            valid_mask = revenues > 0
+            
+            if valid_mask.sum() >= 2:
+                op_margins = op_incomes[valid_mask] / revenues[valid_mask]
+                profile["avg_op_margin_pct"] = round(float(np.mean(op_margins)) * 100, 2)
+            
+            # Revenue growth
+            if len(revenues) >= 3:
+                rev_growth = np.diff(revenues) / (np.abs(revenues[:-1]) + 1e-9)
+                profile["avg_revenue_growth_pct"] = round(float(np.mean(rev_growth)) * 100, 2)
+                profile["revenue_growth_consistency"] = round(
+                    float((rev_growth > 0).sum() / len(rev_growth)) * 100, 1
+                )
+        
+    except Exception as e:
+        logger.warning(f"Error building profile for {ticker}: {e}")
+        profile["error"] = str(e)
+    
+    return profile
