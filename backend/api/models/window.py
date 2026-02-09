@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 
 WindowType = Literal["structural", "phase", "signal"]
 WindowLabel = Literal[
-    "structural",  # 2015-2025 (10+ years)
-    "phase_foundation",  # 2015-2018
-    "phase_acceleration",  # 2019-2021
-    "phase_monetization",  # 2022-2025
+    "structural",  # 2000-2025 (20+ years)
+    "phase_foundation",  # 2000-2010
+    "phase_acceleration",  # 2011-2015
+    "phase_monetization",  # 2016-2025
     "medium_term",  # 3-7 years
     "short_term",  # <3 years
     "custom"
@@ -60,28 +60,43 @@ class TimeWindow(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "start_date": "2015-01-01",
+                "start_date": "2000-01-01",
                 "end_date": "2025-12-31",
                 "label": "structural",
                 "window_type": "structural",
-                "duration_years": 11.0,
+                "duration_years": 26.0,
                 "policy": {
                     "allow_rating": True,
                     "allow_scores": True,
                     "require_disclaimer": False,
                     "output_mode": "rating"
                 },
-                "description": "Structural moat assessment (2015-2025)"
+                "description": "Structural moat assessment (2000-2025)"
             }
         }
 
 
 # Default window presets
 STRUCTURAL_WINDOW = TimeWindow(
-    start_date="2015-01-01",
+    start_date="2000-01-01",
     end_date="2025-12-31",
     label="structural",
     window_type="structural",
+    duration_years=26.0,
+    policy=WindowPolicy(
+        allow_rating=True,
+        allow_scores=True,
+        require_disclaimer=False,
+        output_mode="rating"
+    ),
+    description="Structural moat assessment over 20+ years (captures multiple cycles)"
+)
+
+PHASE_FOUNDATION = TimeWindow(
+    start_date="2000-01-01",
+    end_date="2010-12-31",
+    label="phase_foundation",
+    window_type="phase",
     duration_years=11.0,
     policy=WindowPolicy(
         allow_rating=True,
@@ -89,52 +104,37 @@ STRUCTURAL_WINDOW = TimeWindow(
         require_disclaimer=False,
         output_mode="rating"
     ),
-    description="Structural moat assessment over 10+ years (captures multiple cycles)"
-)
-
-PHASE_FOUNDATION = TimeWindow(
-    start_date="2015-01-01",
-    end_date="2018-12-31",
-    label="phase_foundation",
-    window_type="phase",
-    duration_years=4.0,
-    policy=WindowPolicy(
-        allow_rating=True,
-        allow_scores=True,
-        require_disclaimer=False,
-        output_mode="rating"
-    ),
-    description="Foundation Phase (2015-2018): Early moat formation and differentiation"
+    description="Foundation Phase (2000-2010): Early moat formation and differentiation"
 )
 
 PHASE_ACCELERATION = TimeWindow(
-    start_date="2019-01-01",
-    end_date="2021-12-31",
+    start_date="2011-01-01",
+    end_date="2015-12-31",
     label="phase_acceleration",
     window_type="phase",
-    duration_years=3.0,
-    policy=WindowPolicy(
-        allow_rating=False,
-        allow_scores=True,
-        require_disclaimer=True,
-        output_mode="direction"
-    ),
-    description="Acceleration & Stress Test (2019-2021): Competitive response and resilience under pressure"
-)
-
-PHASE_MONETIZATION = TimeWindow(
-    start_date="2022-01-01",
-    end_date="2025-12-31",
-    label="phase_monetization",
-    window_type="phase",
-    duration_years=4.0,
+    duration_years=5.0,
     policy=WindowPolicy(
         allow_rating=True,
         allow_scores=True,
         require_disclaimer=False,
         output_mode="rating"
     ),
-    description="Monetization & Power (2022-2025): Pricing power and ecosystem monetization"
+    description="Acceleration & Growth (2011-2015): Competitive response and platform scaling"
+)
+
+PHASE_MONETIZATION = TimeWindow(
+    start_date="2016-01-01",
+    end_date="2025-12-31",
+    label="phase_monetization",
+    window_type="phase",
+    duration_years=10.0,
+    policy=WindowPolicy(
+        allow_rating=True,
+        allow_scores=True,
+        require_disclaimer=False,
+        output_mode="rating"
+    ),
+    description="Monetization & Power (2016-2025): Pricing power and ecosystem monetization"
 )
 
 DEFAULT_WINDOWS = {
@@ -151,7 +151,7 @@ def get_default_windows() -> dict[str, TimeWindow]:
 
 
 def get_structural_window() -> TimeWindow:
-    """Get the default structural window (2015-2025)."""
+    """Get the default structural window (2000-2025)."""
     return STRUCTURAL_WINDOW
 
 

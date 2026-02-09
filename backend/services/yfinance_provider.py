@@ -33,8 +33,8 @@ SUPPORTED_TICKERS = {
 }
 
 # Date range constraints
-# Updated to 2015 to support full structural moat window (2015-2025)
-MIN_DATE = "2015-01-01"
+# Extended to 2000 for 20+ year moat analysis (yfinance supports full history)
+MIN_DATE = "2000-01-01"
 MAX_DATE = "2025-12-31"
 
 # Cache validity period (24 hours)

@@ -23,6 +23,13 @@ from services.fnspid_retrieval import (
     get_passage_count,
     get_date_range,
 )
+from services.roic_calculator import (
+    check_roic_hurdle,
+    extract_annual_financials,
+    calculate_roic_time_series,
+    DEFAULT_WACC,
+)
+from services.fundamentals_provider import get_fundamental_data
 
 logger = logging.getLogger(__name__)
 
@@ -83,21 +90,29 @@ class DataDrivenMoatScorer:
             has_news = is_fnspid_data_available(ticker)
             news_metrics = self._calculate_news_metrics(ticker) if has_news else {}
             
+            # Try to get ROIC data
+            roic_data = self._get_roic_data(ticker)
+            has_roic = roic_data is not None
+            
             # Calculate moat factors
             factors = {
                 "network_effects": self._score_network_effects(price_metrics, news_metrics),
                 "switching_costs": self._score_switching_costs(price_metrics, news_metrics),
-                "intangible_assets": self._score_intangible_assets(price_metrics, news_metrics),
-                "cost_advantages": self._score_cost_advantages(price_metrics, news_metrics),
+                "intangible_assets": self._score_intangible_assets(price_metrics, news_metrics, roic_data),
+                "cost_advantages": self._score_cost_advantages(price_metrics, news_metrics, roic_data),
                 "regulatory_barriers": self._score_regulatory_barriers(price_metrics, news_metrics),
             }
+            
+            # Add financial performance factor if ROIC available
+            if has_roic:
+                factors["financial_performance"] = self._score_financial_performance(roic_data)
             
             # Calculate overall score and rating
             overall_score = np.mean(list(factors.values()))
             rating = self._determine_rating(overall_score, factors)
-            confidence = self._determine_confidence(price_metrics, has_news)
-            trend = self._determine_trend(price_metrics)
-            summary = self._generate_summary(ticker, overall_score, rating, factors, trend)
+            confidence = self._determine_confidence(price_metrics, has_news, has_roic)
+            trend = self._determine_trend(price_metrics, roic_data)
+            summary = self._generate_summary(ticker, overall_score, rating, factors, trend, roic_data)
             
             return {
                 "overall_score": round(overall_score, 2),
@@ -184,6 +199,22 @@ class DataDrivenMoatScorer:
         
         return metrics
     
+    def _get_roic_data(self, ticker: str) -> Optional[dict]:
+        """
+        Get ROIC data for a ticker.
+        
+        Returns None if ROIC data unavailable (e.g., fundamental data missing).
+        """
+        try:
+            roic_result = check_roic_hurdle(ticker, years=10, use_cache=True)
+            if "error" in roic_result:
+                logger.warning(f"ROIC data not available for {ticker}: {roic_result.get('error')}")
+                return None
+            return roic_result
+        except Exception as e:
+            logger.warning(f"Could not calculate ROIC for {ticker}: {e}")
+            return None
+    
     # ========================================================================
     # Factor Scoring Methods
     # ========================================================================
@@ -261,7 +292,7 @@ class DataDrivenMoatScorer:
         
         return min(5.0, max(1.0, round(score, 1)))
     
-    def _score_intangible_assets(self, price: dict, news: dict) -> float:
+    def _score_intangible_assets(self, price: dict, news: dict, roic: Optional[dict] = None) -> float:
         """
         Score intangible assets (brand, patents, IP) based on premium valuation.
         
@@ -295,9 +326,17 @@ class DataDrivenMoatScorer:
         elif vol < 35:
             score += 0.3
         
+        # ROIC bonus (high ROIC suggests pricing power from brand/IP)
+        if roic and roic.get('hurdle_passed'):
+            avg_roic_pct = roic.get('avg_roic_pct', 0)
+            if avg_roic_pct > 30:
+                score += 0.7
+            elif avg_roic_pct > 20:
+                score += 0.4
+        
         return min(5.0, max(1.0, round(score, 1)))
     
-    def _score_cost_advantages(self, price: dict, news: dict) -> float:
+    def _score_cost_advantages(self, price: dict, news: dict, roic: Optional[dict] = None) -> float:
         """
         Score cost advantages based on margin proxies and performance.
         
@@ -330,6 +369,14 @@ class DataDrivenMoatScorer:
             score += 0.7
         elif recent_return > 0.2:  # >20%
             score += 0.4
+        
+        # ROIC bonus (high ROIC indicates cost efficiency)
+        if roic and roic.get('hurdle_passed'):
+            avg_roic_pct = roic.get('avg_roic_pct', 0)
+            if avg_roic_pct > 25:
+                score += 0.8
+            elif avg_roic_pct > 15:
+                score += 0.5
         
         return min(5.0, max(1.0, round(score, 1)))
     
@@ -369,6 +416,47 @@ class DataDrivenMoatScorer:
         
         return min(5.0, max(1.0, round(score, 1)))
     
+    def _score_financial_performance(self, roic: dict) -> float:
+        """
+        Score based on ROIC > WACC over 10 years (quantitative moat proof).
+        
+        Strong moat:
+        - ROIC > 15% consistently
+        - ROIC > WACC for 8+ years (80%+)
+        - Stable or improving ROIC trend
+        """
+        score = 2.5  # Base neutral score
+        
+        avg_roic_pct = roic.get('avg_roic_pct', 0)
+        years_above_hurdle_pct = roic.get('years_above_hurdle_pct', 0)
+        roic_trend = roic.get('roic_trend', 'stable')
+        
+        # Bonus for high average ROIC
+        if avg_roic_pct > 30:
+            score += 1.5
+        elif avg_roic_pct > 20:
+            score += 1.0
+        elif avg_roic_pct > 15:
+            score += 0.6
+        elif avg_roic_pct > 10:
+            score += 0.3
+        
+        # Bonus for consistency (years above WACC)
+        if years_above_hurdle_pct >= 90:
+            score += 1.0
+        elif years_above_hurdle_pct >= 70:
+            score += 0.6
+        elif years_above_hurdle_pct >= 50:
+            score += 0.3
+        
+        # Bonus for strengthening trend
+        if roic_trend == "strengthening":
+            score += 0.5
+        elif roic_trend == "weakening":
+            score -= 0.5
+        
+        return min(5.0, max(1.0, round(score, 1)))
+    
     # ========================================================================
     # Rating and Summary Methods
     # ========================================================================
@@ -386,12 +474,15 @@ class DataDrivenMoatScorer:
         else:
             return "Narrow"
     
-    def _determine_confidence(self, price: dict, has_news: bool) -> str:
+    def _determine_confidence(self, price: dict, has_news: bool, has_roic: bool = False) -> str:
         """Determine confidence level based on data availability and quality."""
         data_points = len([v for v in price.values() if v is not None])
         
-        # High confidence: full data + news
-        if data_points >= 10 and has_news:
+        # High confidence: full data + news + ROIC
+        if data_points >= 10 and has_news and has_roic:
+            return "High"
+        # Medium-high confidence: good price data + ROIC or news
+        elif data_points >= 10 and (has_news or has_roic):
             return "High"
         # Medium confidence: good price data
         elif data_points >= 8:
@@ -400,8 +491,15 @@ class DataDrivenMoatScorer:
         else:
             return "Low"
     
-    def _determine_trend(self, price: dict) -> str:
-        """Determine moat trend from recent performance."""
+    def _determine_trend(self, price: dict, roic: Optional[dict] = None) -> str:
+        """Determine moat trend from recent performance and ROIC."""
+        # If ROIC data available, use it (more reliable for moat trend)
+        if roic:
+            roic_trend = roic.get('roic_trend', 'stable')
+            if roic_trend in ['strengthening', 'weakening', 'stable']:
+                return roic_trend
+        
+        # Fallback to price-based trend
         recent_return = price.get('recent_return', 0)
         total_return = price.get('total_return', 0)
         
@@ -424,7 +522,8 @@ class DataDrivenMoatScorer:
         overall_score: float,
         rating: str,
         factors: dict,
-        trend: str
+        trend: str,
+        roic: Optional[dict] = None
     ) -> str:
         """Generate human-readable summary of moat analysis."""
         # Find strongest factors
@@ -445,6 +544,11 @@ class DataDrivenMoatScorer:
         
         summary += ". "
         
+        # Add ROIC context if available
+        if roic and roic.get('hurdle_passed'):
+            avg_roic = roic.get('avg_roic_pct', 0)
+            summary += f"The company has sustained an average ROIC of {avg_roic:.1f}% over {roic.get('years_analyzed', 10)} years, significantly above its cost of capital ({roic.get('wacc_pct', 10):.1f}%), providing quantitative proof of durable competitive advantages. "
+        
         # Add trend
         if trend == "strengthening":
             summary += "The competitive position has strengthened in recent years, "
@@ -454,9 +558,215 @@ class DataDrivenMoatScorer:
             summary += "The competitive position has remained stable, "
         
         # Add score context
-        summary += f"supported by quantitative analysis of 2015-2025 market data (score: {overall_score:.1f}/5.0)."
+        summary += f"supported by comprehensive analysis of market and fundamental data (score: {overall_score:.1f}/5.0)."
         
         return summary
+    
+    def identify_moat_sources(self, ticker: str, use_cache: bool = True) -> dict:
+        """
+        Identify structural moat sources using financial metrics and news data.
+        
+        Replaces the hardcoded moat profiles by analyzing:
+        - Gross margin level -> Intangible Assets / Pricing Power
+        - Revenue growth consistency -> Network Effects
+        - ROIC consistency + low volatility -> Cost Advantages
+        - Revenue stability (low volatility) -> Switching Costs
+        - Market concentration indicators -> Efficient Scale / Regulatory Barriers
+        
+        Args:
+            ticker: Stock ticker symbol
+            use_cache: Whether to use cached data
+            
+        Returns:
+            Dict with identified moat sources, strength levels, and evidence
+        """
+        ticker = ticker.upper()
+        logger.info(f"Identifying moat sources for {ticker}")
+        
+        sources = {}
+        
+        try:
+            # Get financial data
+            fundamental_data = get_fundamental_data(ticker, use_cache=use_cache)
+            df = extract_annual_financials(fundamental_data)
+            
+            if df.empty or len(df) < 3:
+                return {
+                    "ticker": ticker,
+                    "sources": {},
+                    "primary_moat": "Insufficient data",
+                    "summary": f"Insufficient financial history to identify moat sources for {ticker}.",
+                }
+            
+            df = df.sort_values("year", ascending=True)
+            
+            # Get ROIC data
+            roic_data = self._get_roic_data(ticker)
+            
+            # === 1. Gross Margin Analysis -> Intangible Assets / Pricing Power ===
+            revenues = df["revenue"].values
+            op_incomes = df["operating_income"].values
+            
+            if len(revenues) >= 3:
+                # Calculate gross margin proxy (operating margin as we don't have COGS)
+                op_margins = op_incomes / (revenues + 1e-9)
+                avg_op_margin = float(np.mean(op_margins[op_margins > -1]))  # Filter outliers
+                
+                if avg_op_margin > 0.35:
+                    sources["intangible_assets"] = {
+                        "strength": "Strong",
+                        "evidence": f"High average operating margin ({avg_op_margin*100:.1f}%) indicates pricing power from brand, patents, or proprietary technology.",
+                        "metric": f"Avg operating margin: {avg_op_margin*100:.1f}%",
+                    }
+                elif avg_op_margin > 0.20:
+                    sources["intangible_assets"] = {
+                        "strength": "Moderate",
+                        "evidence": f"Moderate operating margin ({avg_op_margin*100:.1f}%) suggests some pricing power from intangible assets.",
+                        "metric": f"Avg operating margin: {avg_op_margin*100:.1f}%",
+                    }
+                
+                # === 2. Revenue Growth Consistency -> Network Effects ===
+                if len(revenues) >= 4:
+                    rev_growth = np.diff(revenues) / (np.abs(revenues[:-1]) + 1e-9)
+                    positive_growth_pct = float((rev_growth > 0).sum() / len(rev_growth)) * 100
+                    avg_growth = float(np.mean(rev_growth))
+                    
+                    if avg_growth > 0.10 and positive_growth_pct > 70:
+                        sources["network_effects"] = {
+                            "strength": "Strong",
+                            "evidence": (
+                                f"Consistent revenue growth (avg {avg_growth*100:.1f}%, "
+                                f"positive in {positive_growth_pct:.0f}% of years) suggests "
+                                f"compounding network effects or platform dynamics."
+                            ),
+                            "metric": f"Avg revenue growth: {avg_growth*100:.1f}%, positive {positive_growth_pct:.0f}% of years",
+                        }
+                    elif avg_growth > 0.05 and positive_growth_pct > 60:
+                        sources["network_effects"] = {
+                            "strength": "Moderate",
+                            "evidence": (
+                                f"Moderate revenue growth (avg {avg_growth*100:.1f}%) with "
+                                f"some consistency suggests potential network effects."
+                            ),
+                            "metric": f"Avg revenue growth: {avg_growth*100:.1f}%",
+                        }
+                    
+                    # === 3. Revenue Stability -> Switching Costs ===
+                    rev_volatility = float(np.std(rev_growth))
+                    
+                    if rev_volatility < 0.15 and avg_growth > 0:
+                        sources["switching_costs"] = {
+                            "strength": "Strong",
+                            "evidence": (
+                                f"Low revenue volatility ({rev_volatility*100:.1f}%) combined with "
+                                f"positive growth suggests high customer retention and switching costs."
+                            ),
+                            "metric": f"Revenue growth volatility: {rev_volatility*100:.1f}%",
+                        }
+                    elif rev_volatility < 0.25:
+                        sources["switching_costs"] = {
+                            "strength": "Moderate",
+                            "evidence": (
+                                f"Moderate revenue stability ({rev_volatility*100:.1f}% volatility) "
+                                f"suggests some degree of customer lock-in."
+                            ),
+                            "metric": f"Revenue growth volatility: {rev_volatility*100:.1f}%",
+                        }
+            
+            # === 4. ROIC-Based Analysis -> Cost Advantages ===
+            if roic_data and roic_data.get("hurdle_passed"):
+                avg_roic_pct = roic_data.get("avg_roic_pct", 0)
+                roic_trend = roic_data.get("roic_trend", "stable")
+                
+                if avg_roic_pct > 25:
+                    sources["cost_advantages"] = {
+                        "strength": "Strong",
+                        "evidence": (
+                            f"Sustained high ROIC ({avg_roic_pct:.1f}%) well above cost of capital "
+                            f"indicates structural cost advantages from scale, technology, or unique resources."
+                        ),
+                        "metric": f"Avg ROIC: {avg_roic_pct:.1f}% vs WACC: {DEFAULT_WACC*100:.0f}%",
+                    }
+                elif avg_roic_pct > 15:
+                    sources["cost_advantages"] = {
+                        "strength": "Moderate",
+                        "evidence": (
+                            f"ROIC ({avg_roic_pct:.1f}%) exceeds cost of capital, "
+                            f"suggesting some operational cost advantages."
+                        ),
+                        "metric": f"Avg ROIC: {avg_roic_pct:.1f}%",
+                    }
+                
+                # === 5. Ecosystem / Platform Lock-in ===
+                # High ROIC + stable/strengthening trend + low revenue volatility
+                if (
+                    avg_roic_pct > 20 
+                    and roic_trend in ["strengthening", "stable"]
+                    and "switching_costs" in sources
+                ):
+                    sources["ecosystem_lockin"] = {
+                        "strength": "Strong" if avg_roic_pct > 30 else "Moderate",
+                        "evidence": (
+                            f"Combination of high ROIC ({avg_roic_pct:.1f}%), {roic_trend} trend, "
+                            f"and revenue stability indicates deep ecosystem or platform lock-in."
+                        ),
+                        "metric": f"ROIC: {avg_roic_pct:.1f}%, Trend: {roic_trend}",
+                    }
+            
+            # === 6. Regulatory Barriers (heuristic) ===
+            # Low volatility + consistent returns in capital-intensive industries
+            # This is a weaker signal since we don't have industry classification
+            if len(revenues) >= 5:
+                rev_growth = np.diff(revenues) / (np.abs(revenues[:-1]) + 1e-9)
+                rev_vol = float(np.std(rev_growth))
+                if rev_vol < 0.10 and avg_op_margin > 0.15:
+                    if "regulatory_barriers" not in sources:
+                        sources["regulatory_barriers"] = {
+                            "strength": "Potential",
+                            "evidence": (
+                                f"Very stable revenue ({rev_vol*100:.1f}% volatility) with decent margins "
+                                f"may indicate regulatory barriers or protected market position."
+                            ),
+                            "metric": f"Revenue volatility: {rev_vol*100:.1f}%",
+                        }
+            
+            # Determine primary moat source
+            strength_order = {"Strong": 3, "Moderate": 2, "Potential": 1}
+            if sources:
+                primary = max(sources.items(), key=lambda x: strength_order.get(x[1]["strength"], 0))
+                primary_moat = primary[0].replace("_", " ").title()
+            else:
+                primary_moat = "None identified"
+            
+            # Build summary
+            strong_sources = [k.replace("_", " ").title() for k, v in sources.items() if v["strength"] == "Strong"]
+            moderate_sources = [k.replace("_", " ").title() for k, v in sources.items() if v["strength"] == "Moderate"]
+            
+            summary_parts = []
+            if strong_sources:
+                summary_parts.append(f"Strong: {', '.join(strong_sources)}")
+            if moderate_sources:
+                summary_parts.append(f"Moderate: {', '.join(moderate_sources)}")
+            
+            summary = f"{ticker} moat sources: " + "; ".join(summary_parts) if summary_parts else f"{ticker}: No clear moat sources identified from financial data."
+            
+            return {
+                "ticker": ticker,
+                "sources": sources,
+                "primary_moat": primary_moat,
+                "summary": summary,
+                "source_count": len(sources),
+                "strong_count": len(strong_sources),
+            }
+            
+        except Exception as e:
+            logger.error(f"Error identifying moat sources for {ticker}: {e}")
+            return {
+                "ticker": ticker,
+                "sources": {},
+                "primary_moat": "Error",
+                "summary": f"Could not analyze moat sources for {ticker}: {str(e)}",
+            }
     
     def _get_default_score(self, ticker: str) -> dict:
         """Return default/fallback score when data is insufficient."""

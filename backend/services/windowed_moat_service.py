@@ -69,7 +69,7 @@ def analyze_structural_and_phases(
     """
     Perform comprehensive multi-window moat analysis.
     
-    Analyzes the structural window (2015-2025) and optionally all phase windows
+    Analyzes the structural window (2000-2025) and optionally all phase windows
     (Foundation, Acceleration, Monetization).
     
     Args:
@@ -134,7 +134,7 @@ def _generate_synthesis(
     synthesis = f"""
 ## Cross-Window Synthesis for {ticker}
 
-**Structural Assessment (2015-2025):** {structural_rating} Moat
+**Structural Assessment (2000-2025):** {structural_rating} Moat
 
 **Phase Evolution:**
 {chr(10).join(phase_summaries)}

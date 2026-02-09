@@ -63,7 +63,8 @@ SUPPORTED_TICKERS = {
 }
 
 # Date range for historical data
-MIN_DATE = "2015-01-01"
+# Extended to 2000 for 20+ year moat analysis (FNSPID dataset covers ~1999-2023)
+MIN_DATE = "2000-01-01"
 MAX_DATE = "2023-12-31"
 
 # Chunking configuration

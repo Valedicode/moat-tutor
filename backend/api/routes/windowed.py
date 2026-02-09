@@ -58,10 +58,10 @@ async def analyze_with_window(
     Analyze a company's moat using a specific time window preset.
     
     Available windows:
-    - `structural`: 2015-2025 (full rating)
-    - `phase_foundation`: 2015-2018 (early moat formation)
-    - `phase_acceleration`: 2019-2021 (stress test)
-    - `phase_monetization`: 2022-2025 (pricing power)
+    - `structural`: 2000-2025 (full rating, 20+ years)
+    - `phase_foundation`: 2000-2010 (early moat formation)
+    - `phase_acceleration`: 2011-2015 (growth and scaling)
+    - `phase_monetization`: 2016-2025 (pricing power and ecosystem)
     """
     try:
         # Get the window preset
@@ -123,8 +123,8 @@ async def analyze_comprehensive(
     Comprehensive multi-window moat analysis.
     
     Analyzes:
-    1. Structural window (2015-2025): Primary long-term rating
-    2. Phase windows (optional): Foundation, Acceleration, Monetization
+    1. Structural window (2000-2025): Primary long-term rating (20+ years)
+    2. Phase windows (optional): Foundation (2000-2010), Acceleration (2011-2015), Monetization (2016-2025)
     
     Provides synthesis comparing insights across windows.
     """

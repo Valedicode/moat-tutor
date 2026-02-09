@@ -61,7 +61,7 @@ class StockDataService:
     def load_ticker_data(
         self,
         ticker: str,
-        start_date: str = "2015-01-01",
+        start_date: str = "2000-01-01",
         end_date: str = "2025-12-31"
     ) -> pd.DataFrame:
         """

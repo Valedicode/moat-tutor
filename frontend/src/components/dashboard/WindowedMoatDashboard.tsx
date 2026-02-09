@@ -72,8 +72,8 @@ export function WindowedMoatDashboard({ ticker }: WindowedMoatDashboardProps) {
     : null;
 
   const tabs: Array<{ id: PhaseTab; label: string; description: string }> = [
-    { id: "structural", label: "Structural (2015-2025)", description: "10+ year comprehensive view" },
-    { id: "foundation", label: "Foundation (2015-2018)", description: "Early moat formation" },
+    { id: "structural", label: "Structural (2000-2025)", description: "20+ year comprehensive view" },
+    { id: "foundation", label: "Foundation (2000-2010)", description: "Early moat formation" },
     { id: "acceleration", label: "Acceleration (2019-2021)", description: "Stress test & competition" },
     { id: "monetization", label: "Monetization (2022-2025)", description: "Pricing power & scale" },
   ];

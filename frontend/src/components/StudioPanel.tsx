@@ -41,9 +41,9 @@ export function StudioPanel({
     }
   };
 
-  // Check if dates represent the full 2015-2025 range
+  // Check if dates represent the full 2000-2025 range
   const isFullRange =
-    startYear === 2015 && endYear === 2025;
+    startYear === 2000 && endYear === 2025;
 
   return (
     <div className="h-full flex flex-col">
@@ -54,7 +54,7 @@ export function StudioPanel({
             <StudioCard
               id="overall-moat"
               title="Overall Moat Score"
-              description="Comprehensive moat analysis across full historical range (2015-2025)"
+              description="Comprehensive moat analysis across full historical range (2000-2025)"
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" />
@@ -73,6 +73,7 @@ export function StudioPanel({
                   startDate={startDate}
                   endDate={endDate}
                   useFullRange={isFullRange}
+                  isExpanded={expandedCard === "overall-moat"}
                 />
               </StudioCardExpanded>
             )}

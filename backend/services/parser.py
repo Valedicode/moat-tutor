@@ -464,14 +464,21 @@ class AgentResponseParser:
         if marker_match:
             # Extract JSON from the hidden section
             hidden_section = marker_match.group(1)
-            json_pattern = r'```json\s*(\{[\s\S]*?\})\s*```'
-            matches = re.findall(json_pattern, hidden_section, re.IGNORECASE)
             
-            if matches:
-                json_str = matches[0]  # Take first JSON in hidden section
+            # Try markdown code fence first (match everything between ```json and ```)
+            fence_pattern = r'```json\s*(.*?)\s*```'
+            fence_matches = re.findall(fence_pattern, hidden_section, re.DOTALL | re.IGNORECASE)
+            
+            if fence_matches:
+                json_str = fence_matches[0].strip()  # Take first JSON in hidden section
             else:
-                logger.warning("No JSON found within MOAT_ASSESSMENT markers")
-                return None
+                # Try raw JSON (strip whitespace and look for { ... } directly)
+                stripped = hidden_section.strip()
+                if stripped.startswith('{') and stripped.endswith('}'):
+                    json_str = stripped
+                else:
+                    logger.warning("No JSON found within MOAT_ASSESSMENT markers")
+                    return None
         else:
             # Fallback: Look for any JSON code block (backwards compatibility)
             json_pattern = r'```json\s*(\{[\s\S]*?\})\s*```'
