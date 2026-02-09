@@ -21,7 +21,25 @@ from langchain_openai import ChatOpenAI
 
 from services.stock_data import get_stock_data_service
 from services.news_provider import get_news_for_agent
-from services.roic_calculator import check_roic_hurdle, compare_roic_to_peers
+from services.roic_calculator import (
+    check_roic_hurdle,
+    compare_roic_to_peers as _compare_roic_to_peers_svc,
+    compare_moat_profiles as _compare_moat_profiles_svc,
+)
+from services.valuation_estimator import (
+    estimate_fair_value,
+    calculate_uncertainty_rating,
+)
+from services.data_driven_moat_scorer import DataDrivenMoatScorer
+from services.resilience_analyzer import (
+    analyze_crisis_resilience,
+    compare_resilience,
+    CRISIS_PERIODS,
+)
+from services.moat_news_classifier import (
+    classify_passages_by_moat_source,
+    detect_moat_milestones as _detect_moat_milestones_svc,
+)
 
 # Import FNSPID retrieval for historical semantic search
 try:
@@ -47,7 +65,8 @@ MOAT_CHARACTERISTICS = """
 2. **Switching Costs** - High cost or difficulty for customers to switch to competitors
 3. **Intangible Assets** - Strong brands, patents, proprietary data, or regulatory advantages
 4. **Cost Advantages** - Economies of scale, unique resources, or efficient processes
-5. **Efficient Scale** - Market structure where a limited number of competitors can profitably exist
+5. **Regulatory Barriers** - Regulatory protection, licenses, or approval requirements that limit competition
+6. **Ecosystem / Platform Lock-in** - Deep integration, proprietary standards, or multi-product ecosystems that create migration friction
 """
 
 
@@ -55,15 +74,19 @@ MOAT_CHARACTERISTICS = """
 # System Prompt
 # ============================================================================
 
-SYSTEM_PROMPT = f"""You are MoatTutor, an expert financial analyst that assesses a company's economic moat using price development and financial news.
+SYSTEM_PROMPT = f"""You are MoatTutor, an expert financial analyst and teacher that helps users understand economic moats -- the durable competitive advantages that protect companies' excess returns.
 
 ## Your Mission
 
-Your task is to assess a company's economic moat using two modalities only:
-1. Recent price development
-2. Recent financial news
+Help users understand economic moats through data, reasoning, and clear teaching. You combine:
+- **Price data**: 2000-2025 (20+ years via yfinance)
+- **Financial news**: 2000-2023 via FNSPID historical archive, 2024+ via yfinance
+- **Fundamental data (ROIC, financials)**: Typically 2006-2025 (varies by company, via Alpha Vantage)
+- **Quantitative tools**: Valuation, uncertainty, resilience, milestone detection
 
-Your goal is not to summarize data, but to **reason about how these signals affect the company's competitive moat** and to explain this clearly to a learner.
+**Data Coverage Note**: ROIC requires fundamental data (income statements, balance sheets) which typically starts 2006-2008. News and price data go back to 2000, allowing you to analyze early moat formation qualitatively even when quantitative ROIC isn't available for those years.
+
+Your goal is to **reason and teach**, not to recite data. Always explain WHY something matters, not just WHAT the data shows. Adapt your response to what the user actually asks for.
 
 ## The MOAT Framework
 
@@ -72,234 +95,317 @@ Your goal is not to summarize data, but to **reason about how these signals affe
 ## Core Principles
 
 **DO:**
-- Filter out noise and focus only on information that could change a moat assessment
+- Answer what the user actually asked -- match your response to their intent
 - Be analytical, cautious, and explanatory
-- Use clear causal chains: Signal → Mechanism → Moat Impact
-- Teach the logic behind your conclusions
+- Use clear causal chains: Signal -> Mechanism -> Moat Impact
+- Teach the logic behind your conclusions -- always explain WHY, not just WHAT
 - State data limitations clearly when present
 
 **DON'T:**
+- Force a rigid multi-section analysis when the user asks a simple question
 - Repeat raw price data or list news items verbatim
 - Describe daily movements, charts, or technical indicators unless explicitly requested
 - Make predictions or provide investment advice
 - Hallucinate specific numbers not in the data
 
+## Teaching Principles (CRITICAL)
+
+You are a teacher first, analyst second. Every response should educate:
+
+**1. Explain WHY it matters**
+- Bad: "ROIC is 33%, WACC is 10%"
+- Good: "ROIC (33%) exceeds WACC (10%), meaning Apple earns 23% more than investors require. This lets Apple reinvest cash flows at 33% instead of 10%, compounding value 3x faster — the mathematical evidence of durable competitive advantages."
+
+**2. Connect metrics to real-world mechanisms**
+- Bad: "Economic profit is $31.8B"
+- Good: "Economic profit ($31.8B annually) is the value created ABOVE what investors require. This excess profit funds ecosystem expansion, R&D, and share buybacks without diluting returns — perpetuating the moat."
+
+**3. Use concrete examples**
+- Bad: "High switching costs"
+- Good: "Switching costs: When iPhone users consider Android, they lose iMessage, FaceTime, AirDrop, purchased apps, and years of iCloud photos. This migration friction is measurable — Apple's services revenue ($85B+) monetizes this lock-in."
+
+**4. Acknowledge what you DON'T know**
+- When ROIC data starts in 2006, acknowledge: "ROIC data begins in 2006. For 2000-2006, we can analyze moat formation through news (iPhone launch 2007, iPod era) and price, but lack quantitative proof via ROIC."
+- When data is uncertain, say so: "Regulatory outcomes are unpredictable — this is a key uncertainty that could materially affect the moat."
+
+**5. Progressive disclosure**
+- Simple queries → concise teaching (2-4 sentences)
+- Focused queries → add one teaching moment connecting data to moat logic
+- Full analysis → comprehensive teaching throughout
+
+**6. Use comparisons to anchor understanding**
+- "NVDA's 30% ROIC vs AMD's 8% ROIC shows a 4x advantage in capital efficiency — NVDA creates $4 of value for every dollar of capital while AMD creates $1."
+- "A 20-year fade period means competitors can't replicate these advantages for two decades — longer than most business cycles."
+
 ## Tool Usage
 
-- Use available tools to gather news and price data for the requested ticker and time period
-- For historical queries (2015-2023):
+- Use available tools to gather data relevant to the user's question
+- For historical queries (2000-2023):
   - If the user asks about a SPECIFIC topic or event (e.g., "AI chip demand", "earnings", "product launch"), 
     provide a query parameter to get_stock_news for semantic search with embeddings
   - If the user asks for GENERAL analysis (e.g., "why did the stock move"), omit the query for chronological summary
 - For recent queries (2024+), the tool automatically uses yfinance
-- Analyze how specific events relate to price movements through the lens of moat characteristics
+- Only call tools that are relevant to the question -- do not call every tool for every query
 
-## ROIC Analysis (NEW - Quantitative Moat Proof)
+## Quantitative Moat Analysis Tools
 
-You now have access to ROIC (Return on Invested Capital) analysis tools that provide MATHEMATICAL PROOF of economic moats:
+You have access to a comprehensive suite of quantitative tools that provide MATHEMATICAL PROOF of economic moats:
 
-**When to Use ROIC:**
-- When analyzing moats for a ticker (always check ROIC as part of your analysis)
-- When the user asks "does this company have a moat?"
-- When explaining competitive advantages quantitatively
-- When comparing companies in the same industry
+### ROIC Analysis (Return on Invested Capital)
 
-**How to Use:**
-1. `get_roic_analysis(ticker, years=10)` - Gets 10-year ROIC history and hurdle check
-2. `compare_roic_to_peers(ticker, "PEER1,PEER2,PEER3", years=10)` - Compares vs peers
-
-**Key Concepts to Explain:**
+**Tools:**
+1. `get_roic_analysis(ticker, years=10)` - Gets ROIC history, hurdle check, excess profit, and fade period
+2. `compare_roic_to_peers(ticker, "PEER1,PEER2,PEER3", years=10)` - Single-dimension ROIC comparison vs peers
+3. `compare_moat_to_peers(ticker, "PEER1,PEER2,PEER3", years=10)` - Multi-dimensional comparison (ROIC spread, margins, growth, economic profit, fade period)
 
 **ROIC Formula:**
 - ROIC = NOPAT / Invested Capital
-- NOPAT = Operating Income × (1 - Tax Rate)
+- NOPAT = Operating Income x (1 - Tax Rate)
 - Invested Capital = Equity + Debt - Excess Cash
 
 **What ROIC Tells Us:**
-- **ROIC > WACC (10% for tech)** = Company earns more than its cost of capital → Value creation
-- **ROIC < WACC** = Company destroys value → No moat
-- **Sustained high ROIC (10+ years)** = Durable competitive advantage → Strong moat
+- **ROIC > WACC (10% for tech)** = Company earns more than its cost of capital = Value creation
+- **ROIC < WACC** = Company destroys value = No moat
+- **Sustained high ROIC (10+ years)** = Durable competitive advantage = Strong moat
+
+**Teaching Guidance for ROIC:**
+When presenting ROIC data, always explain:
+1. **Why the spread matters**: "33% ROIC vs 10% WACC = 23 percentage point spread. This means every $100 of capital generates $33 of returns instead of the required $10 — enabling 3x faster compounding."
+2. **What it enables**: "High ROIC lets companies reinvest profits at superior rates, fund ecosystem expansion, or return cash to shareholders — all without diluting returns."
+3. **How it proves moats**: "Sustaining 30%+ ROIC for 20 years proves the company has something competitors can't replicate. If it were easy, competition would drive ROIC down to WACC."
+4. **Coverage limitations**: "ROIC data typically starts 2006-2008 when fundamental statements become available. Earlier moat analysis relies on news and price patterns."
+
+### Excess Profit (Economic Profit)
+
+The ROIC analysis includes **excess profit** data:
+- **ROIC-WACC Spread**: The percentage points of return above cost of capital (e.g., 30% ROIC - 10% WACC = 20% spread)
+- **Economic Profit**: Dollar amount of value created = (ROIC - WACC) x Invested Capital
+- **Cumulative Economic Profit**: Total excess value created over the analysis period
+
+**Teaching Guidance for Economic Profit:**
+Always explain economic profit in concrete terms:
+- "Economic profit is the value created ABOVE what investors require. If a company has $31.8B in annual economic profit, it means the business generates $31.8B more value than if that same capital were deployed at the cost of capital."
+- "Cumulative economic profit ($708B over 20 years) is the total excess value created by the moat. This isn't revenue or profit — it's the incremental value from competitive advantages."
+- "High economic profit funds three things without reducing returns: (1) ecosystem expansion (App Store, services), (2) R&D and innovation, (3) shareholder returns (buybacks, dividends). This self-reinforcing cycle widens the moat."
+- "If economic profit shrinks or turns negative, the moat is eroding — the company no longer creates value above what investors require."
+
+### Fade Period (Moat Durability)
+
+The ROIC analysis includes **fade period estimation**:
+- **Stage I (Explicit Forecast)**: Recent actual ROIC data (high confidence)
+- **Stage II (Fade Period)**: Estimated years until ROIC converges to WACC
+- **Stage III (Terminal)**: ROIC = WACC (no excess returns)
+
+**Classification:**
+- Wide Moat: 15+ year fade period (ROIC stable/improving, 2x+ WACC)
+- Narrow Moat: 8-14 year fade period
+- No Moat: <8 years or ROIC already at/below WACC
+
+**Teaching Guidance for Fade Period:**
+Explain fade period in terms of competitive dynamics:
+- "A 20-year fade period means competitors cannot replicate Apple's advantages for two decades. That's longer than the iPhone has existed. This durability comes from reinforcing loops — App Store attracts developers → more apps attract users → larger user base attracts more developers."
+- "Fade period estimates are uncertain — they're projections based on ROIC trends. A company with stable/improving ROIC gets a longer fade; declining ROIC shortens it. Regulatory changes, technological disruption, or competitive breakthroughs could accelerate the fade."
+- "Compare fade periods: NVDA (20+ years, Wide Moat) vs AMD (8 years, Narrow Moat) shows the difference between structural advantages (CUDA ecosystem, switching costs) vs cyclical success (good chips today, but easily matched tomorrow)."
+
+### Fair Value & Price/Fair Value Ratio
+
+**Tool:** `get_valuation_analysis(ticker)` - Simplified DCF fair value estimate
+
+**5-Star Rating System (based on Price/Fair Value ratio):**
+- 5-Star: P/FV < 0.60 (deep discount, high margin of safety)
+- 4-Star: P/FV 0.60-0.80 (undervalued)
+- 3-Star: P/FV 0.80-1.20 (fairly valued)
+- 2-Star: P/FV 1.20-1.40 (overvalued)
+- 1-Star: P/FV > 1.40 (significantly overvalued)
+
+**Teaching Moment**: "The Price/Fair Value ratio tells us whether the market has already priced in a company's moat. A 5-star Wide Moat company is rare—it means the market is UNDERVALUING proven competitive advantages. This is where the Morningstar framework finds the best risk-adjusted opportunities."
+
+**Teaching Moment**: "Fair value convergence: Over time, market prices tend to converge toward intrinsic value. Companies trading below fair value with wide moats have a natural tailwind—the market eventually recognizes what the fundamentals already show."
+
+### Uncertainty Rating
+
+**Tool:** `get_uncertainty_analysis(ticker)` - Financial volatility assessment
+
+**Rating Scale:**
+- **Low**: Predictable business, stable revenues and margins (20% margin of safety)
+- **Medium**: Some variability but fundamentally stable (30% margin of safety)
+- **High**: Meaningful volatility in revenue or returns (40% margin of safety)
+- **Very High**: Significant unpredictability (50% margin of safety)
+- **Extreme**: Highly volatile or unproven business (60% margin of safety)
+
+**Teaching Moment**: "Uncertainty determines HOW MUCH discount you need to buy safely. A Wide Moat stock with Low uncertainty needs only a 20% discount to be 5-star, but a Wide Moat with Very High uncertainty needs 50%. Higher uncertainty = larger margin of safety required."
+
+### Structural Moat Sources (Data-Driven)
+
+**Tool:** `get_moat_characteristics(ticker)` - Identifies moat sources from financial data
+
+Instead of relying on static profiles, this tool analyzes:
+- High gross/operating margin (>35%) -> Intangible Assets / Pricing Power
+- Low revenue volatility + positive growth -> Switching Costs
+- Revenue growth > peers + consistency -> Network Effects
+- ROIC > 25% sustained -> Cost Advantages
+- High ROIC + stable trend + revenue stability -> Ecosystem/Platform Lock-in
 
 **Connecting ROIC to Moat Sources:**
+- **High ROIC + Network Effects**: Platform scales with low incremental capital.
+- **High ROIC + Switching Costs**: Captive customers fund reinvestment at high returns.
+- **High ROIC + Intangible Assets**: Brand/patents enable premium pricing with efficient capital use.
+- **High ROIC + Cost Advantages**: Scale or unique resources lower costs vs peers.
+- **Declining ROIC**: May signal moat erosion, increased competition, or capital intensity.
 
-- **High ROIC + Network Effects**: Platform scales with low incremental capital. Example: "NVDA's 30% ROIC shows it can grow the CUDA ecosystem without proportional capital investment—classic network effects."
+### Standardized Global Comparison
 
-- **High ROIC + Switching Costs**: Captive customers fund reinvestment at high returns. Example: "MSFT's 40%+ ROIC reflects enterprise switching costs—once companies integrate Office/Azure, MSFT earns high returns on incremental investment."
+**Tool:** `compare_moat_to_peers(ticker, "PEER1,PEER2,PEER3")` - Multi-dimensional comparison
 
-- **High ROIC + Intangible Assets**: Brand/patents enable premium pricing with efficient capital use. Example: "AAPL's 40% ROIC demonstrates pricing power from brand intangibles—customers pay premium prices while AAPL maintains asset-light operations."
+Compares companies across a standardized methodology:
+- ROIC-WACC spread (excess return)
+- Operating margin
+- Revenue growth rate and consistency
+- Economic profit (dollar value creation)
+- Fade period (moat durability)
 
-- **High ROIC + Cost Advantages**: Scale or unique resources lower costs vs peers. Example: "If Company A has 25% ROIC while peers average 10%, Company A likely has structural cost advantages (scale, technology, unique resources)."
+**Teaching Moment**: "The standardized comparison ensures objectivity--every company worldwide is measured by the same ruler. When NVDA's ROIC spread is 20% vs AMD's 5%, that's not opinion--it's mathematical evidence of superior value creation."
 
-- **Declining ROIC**: May signal moat erosion, increased competition, or capital intensity. Example: "ROIC dropping from 20% to 12% over 5 years suggests competitive pressure is eroding the moat."
+### News-to-Moat Source Classification
 
-**Teaching Moments:**
-- Always explain WHY high ROIC = moat (can reinvest at high rates → compounds value)
-- Compare ROIC to peers to show if advantage is company-specific or industry-wide
-- Use ROIC trends to assess if moat is strengthening or weakening
-- Explain the 10-year window: "We need 10 years to see ROIC persist through economic cycles—one good year doesn't prove a moat."
+**Tool:** `analyze_moat_news(ticker, start_date, end_date)` - Classify news by moat source
 
-## Mandatory Output Structure
+Scans historical news and classifies passages into moat categories:
+- Network Effects, Switching Costs, Intangible Assets, Cost Advantages, Regulatory Barriers, Ecosystem Lock-in
+- Uses semantic similarity against a curated query bank per moat source
+- Returns evidence passages grouped by source with confidence levels
 
-When the user provides a **ticker and time period** (or asks to analyze a stock's moat), you MUST follow this exact structure:
+**Teaching Moment**: "Moat sources leave fingerprints in the news. Patent filings signal intangible assets; enterprise adoption announcements signal switching costs. By classifying years of news, we can trace which moat sources are strengthening over time."
 
-### 1. Executive Takeaway (max 4 sentences)
-- State whether the moat is strengthening, weakening, or stable
-- Identify the main driver
-- Be directional but not speculative
+### Moat Milestone Detection
 
-### 2. Price Signal → Market Interpretation
-Summarize price behavior textually, focusing on:
-- Trend regime (up / down / sideways)
-- Changes in volatility
-- Market reaction (or lack thereof) to major news
+**Tool:** `detect_moat_milestones(ticker)` - Find the most significant moat events
 
-Explain what this suggests about market belief and expectations, not intrinsic value.
+Combines three signals to identify milestones:
+1. **Price-anchored**: Notable price moves (>5%) with moat-relevant news within 3 days
+2. **Moat-themed**: News that strongly matches moat source patterns
+3. **ROIC overlay**: Connection to year-over-year ROIC changes
 
-### 3. News Signals → Moat-Relevant Themes
-Cluster the news into **at most three themes**.
+**Teaching Moment**: "A moat milestone is an event where the competitive landscape materially changed. The 2007 iPhone launch didn't just move Apple's stock--it created switching costs and ecosystem lock-in that still drive ROIC 18 years later."
 
-For each theme:
-- Describe the core development
-- Explain why it matters (or does not matter) for long-term competitive advantage
-- Ignore short-term or one-off news unless it affects competitive positioning
+### Price Resilience Analysis
 
-### 4. Moat Reasoning (Causal Analysis)
-Reason explicitly using the following moat dimensions where relevant:
-- **Switching costs**: What customers lose when changing to a competitor
-- **Network effects**: Value increases as more users join the platform
-- **Cost advantages**: Ability to produce goods/services cheaper due to scale or unique resources
-- **Brand / intangible assets**: Patents, proprietary data, brand reputation, regulatory advantages
-- **Regulatory barriers**: Regulatory protection or approval requirements
-- **Ecosystem or platform lock-in**: Integration complexity or proprietary standards
+**Tools:**
+- `analyze_resilience(ticker, crisis)` - Drawdown and recovery during market crises
+- `compare_resilience_to_peers(ticker, "PEER1,PEER2", crisis)` - Peer comparison during downturns
 
-Use clear causal chains:
-**Signal → Mechanism → Moat Impact**
+Available crises: `dot_com_bust`, `financial_crisis`, `covid_crash`, `rate_hike_2022`
 
-Example: "The 30% increase in enterprise adoption (signal) strengthens switching costs (mechanism) because migrating workloads becomes more expensive as integration deepens (moat impact)."
+Measures for each crisis:
+- Peak-to-trough drawdown
+- Recovery time (days to regain prior peak)
+- Post-crisis 1-year and 3-year returns
+- Long-term CAGR, Sharpe ratio, Sortino ratio, max drawdown (20-year metrics)
 
-### 5. Uncertainty & What Would Change the View
-List 1–2 key uncertainties or counterfactuals:
-- What evidence would materially strengthen or weaken your current moat assessment?
+**Teaching Moment**: "Price resilience during crises is a real-world stress test for moats. A company with a wide moat should have shallower drawdowns and faster recovery because its competitive advantages persist even when the economy contracts. Compare NVDA's recovery to AMD's after 2022 and you'll see the moat in action."
 
-Use phrases like: "this suggests", "the key mechanism is", "at this stage"
+**Teaching Moment (ROIC-Resilience Link)**: "Companies with high pre-crisis ROIC tend to recover faster because their business model generates returns that attract capital back. The moat protects the business; the business protects the stock price."
 
-### 6. Overall Moat Conclusion
-After your analysis, state the overall moat rating in 1-2 sentences:
+## How to Respond (Adapt to User Intent)
 
-**Format**: "Overall Assessment: [Wide/Narrow/None] Moat (Confidence: [Low/Medium/High])"
+**IMPORTANT**: Do NOT force a rigid multi-section structure on every response. Match your response format to what the user actually asked for. Read the user's message carefully and choose the right mode:
 
-Briefly explain why (reference the strongest dimensions or key uncertainties).
+### Conversational / Conceptual Questions
+When the user asks a general or conceptual question (e.g., "What is ROIC?", "Explain switching costs", "How does the fade period work?"):
+- Answer directly and concisely (4-15 sentences)
+- **Always explain WHY it matters**, not just what it is
+- Include a concrete example from a real company (AAPL, NVDA, MSFT)
+- Connect the concept to competitive dynamics or value creation
+- Offer a follow-up question to deepen the discussion
+- Do NOT produce a multi-section analysis or call unnecessary tools
 
----
+**Example (Good):**
+User: "What is ROIC?"
+You: "ROIC (Return on Invested Capital) measures how efficiently a company converts capital into profits. It's calculated as NOPAT / Invested Capital. Why it matters: When ROIC exceeds the cost of capital (WACC, typically 10% for tech), the company creates value. For example, Apple's 33% ROIC vs 10% WACC means it generates $33 of profit for every $100 of capital, compared to the required $10. This 3x advantage lets Apple reinvest at superior rates or return cash without diluting returns. Sustained high ROIC (10+ years) is mathematical proof of a moat — if it were easy, competition would drive ROIC down to WACC. Would you like to see how Apple's ROIC compares to competitors, or understand what drives high ROIC?"
 
-### INTERNAL ASSESSMENT (Hidden from User)
-After your conclusion, add this structured JSON between the markers below. This will be extracted automatically and NOT shown to the user.
+### Focused Data Questions
+When the user asks a specific data question (e.g., "What is AAPL's ROIC?", "Compare NVDA to AMD", "How did MSFT perform during COVID?"):
+- Call the relevant tool(s) -- only the ones needed
+- Present the results clearly with **interpretation, not just numbers**
+- **Add a teaching moment** connecting the data to moat logic — explain WHY the numbers matter
+- Use comparisons or context to make abstract numbers concrete
+- Do NOT force all 7 sections -- just answer the question with depth
+
+**Example (Good):**
+User: "What is AAPL's ROIC?"
+You: [Call get_roic_analysis("AAPL")]
+"Apple's ROIC (2006-2025): average 33.2%, recent years 50-64%, consistently above the 10% WACC hurdle for 20 straight years.
+
+Why this matters: This 23 percentage point spread means Apple creates $31.8B in economic profit annually — value above what investors require. This excess lets Apple reinvest in ecosystem expansion (services, App Store) and shareholder returns without reducing ROIC. Sustaining 30%+ returns for two decades proves durable competitive advantages — if competitors could match this, they would, driving returns down. The 20-year fade period estimate suggests these advantages (ecosystem lock-in, network effects, scale) will persist for decades.
+
+Would you like to see how this compares to Microsoft or Google, or understand which moat sources drive this ROIC?"
+
+### Full Moat Analysis
+When the user explicitly asks for a comprehensive moat analysis (e.g., "Analyze NVDA's moat", "Give me a full analysis of AAPL"):
+- Use the structured analysis format below
+- Call multiple tools to build a complete picture
+- This is the ONLY mode where the full structure is expected
+
+### Full Analysis Structure (use ONLY when user asks for comprehensive moat analysis)
+
+When performing a full analysis, cover these elements (in whatever order is natural):
+
+1. **Executive Takeaway** (2-4 sentences): Is the moat strengthening, weakening, or stable? What drives it?
+
+2. **Price Signal**: What does price behavior suggest about market belief? (Trend, volatility, reactions to events)
+
+3. **News Themes**: Cluster into 2-3 moat-relevant themes with causal reasoning.
+
+4. **Moat Reasoning**: Use Signal -> Mechanism -> Moat Impact chains for the relevant dimensions:
+   - Switching Costs, Network Effects, Cost Advantages, Intangible Assets, Regulatory Barriers, Ecosystem Lock-in
+
+5. **Uncertainty**: 1-2 key uncertainties or counterfactuals.
+
+6. **Valuation Context** (if relevant): P/FV ratio, excess profit, fade period, uncertainty rating.
+
+7. **Overall Conclusion**: "Overall Assessment: [Wide/Narrow/None] Moat (Confidence: [Low/Medium/High])"
+
+After the conclusion, append the hidden structured assessment for programmatic extraction:
 
 **[MOAT_ASSESSMENT_START]**
 ```json
 {{
-  "switching_costs": {{
-    "score": <0-5>,
-    "direction": "<Strengthening|Stable|Weakening>",
-    "confidence": "<Low|Medium|High>",
-    "rationale": "<One sentence causal chain>"
-  }},
-  "network_effects": {{ ... }},
-  "intangible_assets": {{ ... }},
-  "cost_advantages": {{ ... }},
-  "regulatory_barriers": {{ ... }},
-  "ecosystem_lockin": {{ ... }},
-  "overall_score": <average of dimension scores>,
-  "overall_rating": "<Wide|Narrow|None>",
-  "overall_confidence": "<Low|Medium|High>",
-  "assessment_period": "<start_date to end_date>"
+  "switching_costs": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
+  "network_effects": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
+  "intangible_assets": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
+  "cost_advantages": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
+  "regulatory_barriers": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
+  "ecosystem_lockin": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
+  "overall_score": 0,
+  "overall_rating": "None",
+  "overall_confidence": "Low",
+  "assessment_period": "start to end"
 }}
 ```
 **[MOAT_ASSESSMENT_END]**
 
-**Scoring Rubric (0-5 scale):**
-- **5.0**: Exceptional, near-unassailable advantage (rare)
-- **4.0-4.9**: Strong, durable advantage with clear evidence
-- **3.0-3.9**: Moderate advantage, visible but contestable
-- **2.0-2.9**: Weak advantage, fragile or niche
-- **1.0-1.9**: Minimal advantage, easily replicated
-- **0.0-0.9**: Absent or negligible
-
-**Overall Rating Logic:**
-- **Wide**: overall_score ≥ 4.0 AND (at least 2 dimensions ≥ 4.0 OR 1 dimension = 5.0) AND overall_confidence ≠ Low
-- **Narrow**: overall_score 2.5-3.9 OR (overall_score ≥ 4.0 but only 1 strong dimension) OR overall_confidence = Low
-- **None**: overall_score < 2.5 OR all dimensions < 3.0
-
-**Important:**
-- The JSON will be hidden from the user - they only see your narrative and conclusion
-- Base scores on the causal reasoning from section 4
-- Price primarily affects **confidence** and **direction**, not the score itself
-- News drives **mechanism-level changes** that justify score levels
+Scoring: 0-5 scale (5 = exceptional, 4+ = strong, 3-3.9 = moderate, 2-2.9 = weak, <2 = minimal).
+Wide Moat: score >= 4.0 with at least 2 strong dimensions.
+Narrow: 2.5-3.9 or only 1 strong dimension.
+None: < 2.5 or all dimensions < 3.0.
 
 ---
 
-## Time Window Policies (CRITICAL)
+## Time Window Guidelines
 
-**Window Duration Matters**
+When the user provides a date range, the analysis credibility depends on the window length:
 
-The credibility of a moat rating depends on the time horizon. Follow these STRICT rules:
+- **8+ years**: Full structural moat rating is appropriate (Wide/Narrow/None).
+- **3-7 years**: Provide directional insight (Strengthening/Stable/Weakening) but note that a structural rating requires a longer window.
+- **< 3 years**: Focus on tactical signals and market sentiment. Note the limitation briefly -- do not refuse to answer, just be transparent about what a short window can and cannot tell us.
 
-### ≥ 8 Years: Full Structural Rating (GREEN LIGHT)
-- **Output**: Complete all 6 sections including moat rating (Wide/Narrow/None)
-- **Rationale**: Sufficient to assess durable competitive advantages across business cycles
-- **Focus**: Long-term structural drivers, ecosystem evolution, competitive dynamics over time
-- **Example**: 2015-2025 (11 years) → Full rating with high confidence
-
-### 3-7 Years: Direction Only (YELLOW LIGHT)
-- **Output**: Sections 1-5 + direction assessment (Strengthening/Stable/Weakening)
-- **Rationale**: Can identify trends but insufficient for structural rating
-- **Focus**: Moat evolution, competitive response, whether advantages are building or eroding
-- **Disclaimer Required**: "Note: This [X]-year window provides directional insight only. A structural moat rating requires ≥8 years to capture full business cycles."
-- **NO Overall Rating**: Do NOT output "Wide/Narrow/None" - only "Moat Direction: [Strengthening/Stable/Weakening]"
-- **Example**: 2019-2021 (3 years) → Strengthening moat during stress test, but no structural rating
-
-### < 3 Years: Signals Only (RED LIGHT)
-- **Output**: Tactical signals and market sentiment only
-- **Rationale**: Too short for any moat assessment - only market expectations and noise
-- **Focus**: Price momentum, sentiment shifts, tactical events, near-term catalysts
-- **Disclaimer Required**: "⚠️ Warning: This [X]-year window is too short for moat analysis. The output reflects tactical signals and market sentiment only, not structural competitive advantages."
-- **NO Moat Analysis**: Skip sections 4-6 entirely. Focus only on price behavior and news themes as market signals.
-- **Example**: 2024-2025 (1 year) → Signals only, no moat conclusion
-
-**When Analysis Window Information Is Provided:**
-
-If the system provides window metadata (start_date, end_date, duration_years, output_mode), you MUST:
-1. Check the `output_mode` field:
-   - `"rating"` → Full structural rating allowed
-   - `"direction"` → Direction only (Strengthening/Stable/Weakening), NO rating
-   - `"signals"` → Tactical signals only, NO moat analysis
-2. Follow the policy strictly - do not issue ratings when `output_mode` is "direction" or "signals"
-3. Include the required disclaimer for medium and short windows
-4. State the window duration explicitly in your opening: "Analyzing [TICKER] over [X] years ([START] to [END])..."
-
-**Default Behavior (No Window Info):**
-
-If no explicit window information is provided, calculate the duration from the dates and apply the rules above.
+For ROIC-related questions, default to 10 years unless the user specifies otherwise.
 
 ---
-
-## Response Modes
-
-### Quick Response Mode
-If the user asks a general question WITHOUT a ticker + time window (e.g., "What is network effects?", "Explain switching costs"):
-- Answer in 4-10 sentences
-- Include 1 short example if helpful
-- Ask one follow-up question to move toward concrete analysis
-
-### Full Analysis Mode
-When the user provides a ticker + time period or asks for moat analysis:
-- Use the 5-section mandatory structure above
-- Be concise but thorough
-- Focus on reasoning, not data recitation
 
 ## Objective
 
-Help the user understand how price and news translate into economic moat dynamics, not merely what happened. Teach through causal reasoning and analytical thinking.
+Help the user understand economic moat dynamics through data and reasoning. Teach through causal chains and clear explanations. Adapt to what the user needs -- sometimes that is a full analysis, sometimes it is a single number with context.
 """
 
 
@@ -313,7 +419,7 @@ def get_stock_news(ticker: str, start_date: str, end_date: str, query: str = Non
     Retrieves financial news articles for a stock ticker within a date range.
     
     This tool intelligently routes between data sources:
-    - Historical dates (2015-2023): Uses FNSPID dataset with 142K+ curated news passages
+    - Historical dates (2000-2023): Uses FNSPID dataset with 142K+ curated news passages (20+ years)
     - Recent dates (2024+): Uses yfinance (typically last 30 days)
     
     For historical queries, you can optionally provide a search query to use semantic
@@ -472,28 +578,45 @@ def get_stock_time_series(ticker: str, start_date: str, end_date: str, columns: 
 @tool
 def get_moat_characteristics(ticker: str) -> str:
     """
-    Retrieves the competitive advantages (moat characteristics) for a company.
+    Identifies the structural competitive advantages (moat sources) for a company
+    using financial data analysis.
+    
+    Analyzes financial metrics to identify moat sources:
+    - Operating margins -> Intangible Assets / Pricing Power
+    - Revenue growth consistency -> Network Effects
+    - Revenue stability -> Switching Costs
+    - ROIC vs WACC -> Cost Advantages
+    - Combined indicators -> Ecosystem/Platform Lock-in
     
     Args:
-        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
     
     Returns:
-        Description of the company's moat characteristics and competitive advantages
+        Data-driven moat source identification with evidence
     """
-    # This will be replaced with structured data
-    moat_profiles = {
-        "AAPL": "Strong: Network Effects (ecosystem), Intangible Assets (brand), Switching Costs (ecosystem lock-in)",
-        "MSFT": "Strong: Network Effects (enterprise adoption), Intangible Assets (brand, IP), Switching Costs (enterprise integration)",
-        "GOOGL": "Strong: Network Effects (search/ads), Intangible Assets (data, brand), Cost Advantages (scale)",
-        "NVDA": "Strong: Intangible Assets (IP, CUDA platform), Network Effects (developer ecosystem), Cost Advantages (scale, R&D efficiency)",
-        "AMZN": "Strong: Network Effects (marketplace), Cost Advantages (logistics scale), Efficient Scale (AWS)",
-        "META": "Strong: Network Effects (social platforms), Intangible Assets (user data), Switching Costs (social graph)",
-    }
-    
-    return moat_profiles.get(
-        ticker.upper(),
-        "Moderate: Intangible Assets (brand), Cost Advantages (operational efficiency)"
-    )
+    try:
+        scorer = DataDrivenMoatScorer()
+        result = scorer.identify_moat_sources(ticker, use_cache=True)
+        
+        if not result.get("sources"):
+            return result.get("summary", f"No moat sources identified for {ticker}.")
+        
+        # Format response
+        response = f"Moat Source Analysis for {result['ticker']}:\n\n"
+        response += f"Primary Moat: {result['primary_moat']}\n\n"
+        
+        for source_name, source_data in result["sources"].items():
+            display_name = source_name.replace("_", " ").title()
+            response += f"  {display_name} ({source_data['strength']}):\n"
+            response += f"    Evidence: {source_data['evidence']}\n"
+            response += f"    Metric: {source_data['metric']}\n\n"
+        
+        response += f"Summary: {result['summary']}\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error analyzing moat characteristics for {ticker}: {str(e)}"
 
 
 @tool
@@ -539,26 +662,23 @@ def search_news_by_topic(ticker: str, query: str, start_date: str, end_date: str
 @tool
 def get_roic_analysis(ticker: str, years: int = 10) -> str:
     """
-    Calculate Return on Invested Capital (ROIC) and check moat hurdle.
+    Calculate Return on Invested Capital (ROIC) with excess profit and fade period.
     
-    ROIC is the definitive quantitative proof of economic moats. A company with 
-    sustained ROIC > Cost of Capital (WACC) over 10 years demonstrates durable
-    competitive advantages that allow it to generate returns above what investors require.
+    ROIC is the definitive quantitative proof of economic moats. This tool provides:
+    - ROIC history and hurdle check (ROIC vs WACC)
+    - Excess Profit: ROIC-WACC spread and dollar economic profit per year
+    - Fade Period: Estimated years of excess returns (Stage I/II/III classification)
     
     Args:
         ticker: Stock ticker symbol (e.g., 'NVDA', 'AAPL', 'MSFT')
         years: Number of years to analyze (default: 10)
     
     Returns:
-        Formatted analysis showing:
-        - Average ROIC over the period
-        - Comparison to estimated WACC (cost of capital)
-        - Year-by-year ROIC values
-        - Moat strength interpretation
+        Comprehensive ROIC analysis with excess profit and fade period
     
     Example:
         get_roic_analysis("NVDA", 10) returns ROIC analysis showing NVDA's
-        30%+ average ROIC over 10 years, far exceeding its ~10% WACC.
+        30%+ average ROIC, $XX billion excess profit, and 20+ year fade.
     """
     try:
         result = check_roic_hurdle(ticker, years=years, use_cache=True)
@@ -575,34 +695,66 @@ def get_roic_analysis(ticker: str, years: int = 10) -> str:
         
         response += f"Years Above WACC: {result['years_above_wacc']}/{result['years_analyzed']} ({result['years_above_hurdle_pct']:.1f}%)\n"
         response += f"ROIC Trend: {result['roic_trend'].title()}\n"
-        response += f"Hurdle Passed: {'Yes ✓' if result['hurdle_passed'] else 'No ✗'}\n\n"
+        response += f"Hurdle Passed: {'Yes' if result['hurdle_passed'] else 'No'}\n\n"
         
-        # Add interpretation
+        # Excess Profit section
+        response += "--- Excess Profit (Economic Profit) ---\n"
+        response += f"Avg ROIC-WACC Spread: {result.get('avg_roic_wacc_spread_pct', 0):+.2f} percentage points\n"
+        avg_ep = result.get('avg_economic_profit', 0)
+        cum_ep = result.get('cumulative_economic_profit', 0)
+        response += f"Avg Annual Economic Profit: ${avg_ep:,.0f}\n"
+        response += f"Cumulative Economic Profit ({result['years_analyzed']}yr): ${cum_ep:,.0f}\n\n"
+        
+        # Fade Period section
+        fade = result.get('fade_period', {})
+        if fade:
+            response += "--- Fade Period (Moat Durability) ---\n"
+            fade_years = fade.get('estimated_fade_years', 'N/A')
+            response += f"Estimated Fade Period: {fade_years} years\n"
+            response += f"Stage: {fade.get('stage', 'N/A').replace('_', ' ').title()}\n"
+            response += f"Durability: {fade.get('durability', 'N/A').title()}\n"
+            if fade.get('stage_description'):
+                response += f"Stages: {fade['stage_description']}\n"
+            if fade.get('explanation'):
+                response += f"Analysis: {fade['explanation']}\n"
+            response += "\n"
+        
+        # Interpretation
         if result['hurdle_passed']:
             response += "Interpretation:\n"
             response += f"{result['ticker']} demonstrates a STRONG ECONOMIC MOAT. "
             response += f"With an average ROIC of {result['avg_roic_pct']:.1f}% consistently exceeding its cost of capital ({result['wacc_pct']:.1f}%), "
-            response += "the company generates returns far above what investors require. "
-            response += "This is mathematical proof of durable competitive advantages—the company can reinvest capital at high rates of return, "
-            response += "which compounds value over time.\n\n"
+            response += f"the company creates ${avg_ep:,.0f} in annual economic profit -- value above what investors require. "
+            
+            if fade and fade.get('estimated_fade_years', 0) >= 15:
+                response += f"The estimated {fade_years}-year fade period indicates these advantages are expected to persist for decades."
+            elif fade and fade.get('estimated_fade_years', 0) >= 8:
+                response += f"The estimated {fade_years}-year fade period suggests durable but not exceptional moat longevity."
+            
+            response += "\n\n"
             
             if result['roic_trend'] == "strengthening":
-                response += "The strengthening trend suggests the moat is widening, making it even harder for competitors to replicate the business model."
+                response += "The strengthening trend suggests the moat is widening.\n"
             elif result['roic_trend'] == "stable":
-                response += "The stable trend suggests the moat remains durable and defensible."
+                response += "The stable trend suggests the moat remains durable.\n"
         else:
             response += "Interpretation:\n"
             response += f"The ROIC data suggests {result['ticker']} may not have a strong economic moat. "
             if result['avg_roic_pct'] < result['wacc_pct']:
-                response += "Average ROIC below WACC indicates the company destroys value—it costs more to fund the business than it earns.\n"
+                response += "Average ROIC below WACC indicates the company destroys value.\n"
             else:
                 response += "While ROIC exceeds WACC, the inconsistency suggests competitive advantages may be weak or temporary.\n"
         
-        # Add recent year-by-year breakdown (last 5 years)
-        response += "\nRecent ROIC History:\n"
+        # Year-by-year breakdown with economic profit
+        response += "\nRecent ROIC & Economic Profit History:\n"
         for year_data in result['annual_data'][:5]:
-            above_marker = "✓" if year_data['above_wacc'] else "✗"
-            response += f"  {year_data['year']}: {year_data['roic_pct']:.2f}% {above_marker}\n"
+            above_marker = "[PASS]" if year_data['above_wacc'] else "[FAIL]"
+            ep = year_data.get('economic_profit', 0)
+            spread = year_data.get('roic_wacc_spread_pct', 0)
+            response += (
+                f"  {year_data['year']}: ROIC {year_data['roic_pct']:.2f}% "
+                f"(spread: {spread:+.2f}%, EP: ${ep:,.0f}) {above_marker}\n"
+            )
         
         return response
         
@@ -638,7 +790,7 @@ def compare_roic_to_peers(ticker: str, peer_tickers_str: str, years: int = 10) -
         if not peer_list:
             return "Error: Please provide at least one peer ticker (comma-separated)."
         
-        result = compare_roic_to_peers(ticker, peer_list, years=years, use_cache=True)
+        result = _compare_roic_to_peers_svc(ticker, peer_list, years=years, use_cache=True)
         
         if "error" in result:
             return f"Unable to compare ROIC: {result['error']}"
@@ -675,6 +827,473 @@ def compare_roic_to_peers(ticker: str, peer_tickers_str: str, years: int = 10) -
         
     except Exception as e:
         return f"Error comparing ROIC: {str(e)}"
+
+
+@tool
+def get_valuation_analysis(ticker: str) -> str:
+    """
+    Estimate fair (intrinsic) value using a simplified DCF model and calculate
+    the Price/Fair Value ratio with a star rating (1-5).
+    
+    Uses Free Cash Flow projections, discounted at WACC, with terminal value.
+    Includes uncertainty-adjusted fair value and margin of safety recommendation.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
+    
+    Returns:
+        Fair value estimate, P/FV ratio, star rating, and DCF assumptions
+    
+    Example:
+        get_valuation_analysis("AAPL") returns fair value, P/FV ratio of 0.85
+        (3-star, fairly valued), with DCF breakdown.
+    """
+    try:
+        result = estimate_fair_value(ticker, use_cache=True)
+        
+        if "error" in result:
+            return f"Unable to estimate fair value for {ticker}: {result['error']}"
+        
+        response = f"Fair Value Analysis for {result['ticker']}:\n\n"
+        
+        fv = result.get('fair_value_per_share', 0)
+        adj_fv = result.get('adjusted_fair_value', 0)
+        price = result.get('current_price')
+        pfv = result.get('price_to_fair_value')
+        stars = result.get('star_rating', 3)
+        disc = result.get('discount_premium_pct')
+        
+        response += f"Fair Value Per Share: ${fv:.2f}\n"
+        response += f"Adjusted Fair Value (with margin of safety): ${adj_fv:.2f}\n"
+        
+        if price:
+            response += f"Current Market Price: ${price:.2f}\n"
+        if pfv:
+            response += f"Price / Fair Value: {pfv:.2f}\n"
+        
+        response += f"Star Rating: {'*' * stars} ({stars}/5)\n"
+        
+        if disc is not None:
+            if disc > 0:
+                response += f"Trading at {abs(disc):.1f}% DISCOUNT to fair value\n"
+            else:
+                response += f"Trading at {abs(disc):.1f}% PREMIUM to fair value\n"
+        
+        # Uncertainty
+        unc_rating = result.get('uncertainty_rating', 'N/A')
+        mos = result.get('margin_of_safety_pct', 'N/A')
+        response += f"\nUncertainty Rating: {unc_rating}\n"
+        response += f"Recommended Margin of Safety: {mos}%\n"
+        
+        # DCF assumptions
+        dcf = result.get('dcf_assumptions', {})
+        response += f"\nDCF Assumptions:\n"
+        response += f"  WACC: {dcf.get('wacc_pct', 'N/A')}%\n"
+        response += f"  FCF Growth Rate: {dcf.get('fcf_growth_rate_pct', 'N/A')}%\n"
+        response += f"  Terminal Growth: {dcf.get('terminal_growth_rate_pct', 'N/A')}%\n"
+        response += f"  Base FCF: ${dcf.get('base_fcf', 0):,.0f}\n"
+        response += f"  Projection Years: {dcf.get('projection_years', 'N/A')}\n"
+        
+        # Recent FCF history
+        fcf_hist = result.get('fcf_history', [])
+        if fcf_hist:
+            response += f"\nRecent FCF History:\n"
+            for h in fcf_hist:
+                response += f"  {h['year']}: FCF ${h['fcf']:,.0f} (Revenue: ${h['revenue']:,.0f})\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error estimating fair value for {ticker}: {str(e)}"
+
+
+@tool
+def get_uncertainty_analysis(ticker: str) -> str:
+    """
+    Calculate an uncertainty rating based on financial volatility metrics.
+    
+    Assesses revenue volatility, ROIC volatility, financial leverage, and
+    operating leverage to determine how predictable the company's future
+    cash flows are. Higher uncertainty requires a larger margin of safety.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
+    
+    Returns:
+        Uncertainty rating (Low to Extreme), component scores, and margin of safety
+    
+    Example:
+        get_uncertainty_analysis("AAPL") might return "Low" uncertainty with
+        a 20% recommended margin of safety.
+    """
+    try:
+        result = calculate_uncertainty_rating(ticker, use_cache=True)
+        
+        response = f"Uncertainty Analysis for {result['ticker']}:\n\n"
+        response += f"Uncertainty Rating: {result['uncertainty_rating']}\n"
+        response += f"Uncertainty Score: {result['uncertainty_score']:.2f} / 4.0\n"
+        response += f"Recommended Margin of Safety: {result['margin_of_safety_pct']}%\n\n"
+        
+        # Component details
+        components = result.get('components', {})
+        if components:
+            response += "Component Analysis:\n"
+            for name, comp in components.items():
+                display_name = name.replace("_", " ").title()
+                response += f"  {display_name}: {comp['label']} (score: {comp['score']}/4)\n"
+        
+        response += f"\n{result.get('explanation', '')}\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error calculating uncertainty for {ticker}: {str(e)}"
+
+
+@tool
+def compare_moat_to_peers(ticker: str, peer_tickers_str: str, years: int = 10) -> str:
+    """
+    Multi-dimensional moat comparison: ROIC spread, margins, growth, economic profit, fade period.
+    
+    This provides a standardized, globally comparable methodology that goes beyond
+    single-metric (ROIC-only) comparison. Each company is measured by the same ruler.
+    
+    Args:
+        ticker: Primary ticker to analyze (e.g., 'NVDA')
+        peer_tickers_str: Comma-separated peer tickers (e.g., 'AMD,INTC,AVGO')
+        years: Number of years to analyze (default: 10)
+    
+    Returns:
+        Multi-dimensional comparison table with advantages highlighted
+    """
+    try:
+        peer_list = [p.strip().upper() for p in peer_tickers_str.split(',') if p.strip()]
+        
+        if not peer_list:
+            return "Error: Please provide at least one peer ticker (comma-separated)."
+        
+        result = _compare_moat_profiles_svc(ticker, peer_list, years=years, use_cache=True)
+        
+        if "error" in result:
+            return f"Unable to compare moat profiles: {result['error']}"
+        
+        primary = result.get('primary_profile', {})
+        
+        response = f"Multi-Dimensional Moat Comparison ({result.get('period', 'N/A')}):\n\n"
+        
+        # Build comparison table
+        all_profiles = [primary] + result.get('peer_profiles', [])
+        
+        response += f"{'Ticker':<8} {'ROIC%':>8} {'Spread%':>9} {'OpMarg%':>9} {'RevGrw%':>9} {'EconProfit':>14} {'Fade(yr)':>10}\n"
+        response += "-" * 72 + "\n"
+        
+        for p in all_profiles:
+            t = p.get('ticker', '?')
+            roic = p.get('avg_roic_pct', '-')
+            spread = p.get('roic_wacc_spread_pct', '-')
+            margin = p.get('avg_op_margin_pct', '-')
+            growth = p.get('avg_revenue_growth_pct', '-')
+            ep = p.get('avg_economic_profit', '-')
+            fade = p.get('fade_years', '-')
+            
+            roic_s = f"{roic:.1f}" if isinstance(roic, (int, float)) else str(roic)
+            spread_s = f"{spread:+.1f}" if isinstance(spread, (int, float)) else str(spread)
+            margin_s = f"{margin:.1f}" if isinstance(margin, (int, float)) else str(margin)
+            growth_s = f"{growth:.1f}" if isinstance(growth, (int, float)) else str(growth)
+            ep_s = f"${ep:,.0f}" if isinstance(ep, (int, float)) else str(ep)
+            fade_s = f"{fade}" if fade != '-' else str(fade)
+            
+            marker = " <--" if t == ticker.upper() else ""
+            response += f"{t:<8} {roic_s:>8} {spread_s:>9} {margin_s:>9} {growth_s:>9} {ep_s:>14} {fade_s:>10}{marker}\n"
+        
+        # Peer averages
+        peer_avgs = result.get('peer_averages', {})
+        if peer_avgs:
+            response += "-" * 72 + "\n"
+            response += f"{'PeerAvg':<8}"
+            for key in ['avg_roic_pct', 'roic_wacc_spread_pct', 'avg_op_margin_pct', 'avg_revenue_growth_pct', 'avg_economic_profit', 'fade_years']:
+                val = peer_avgs.get(key)
+                if val is not None:
+                    if key == 'avg_economic_profit':
+                        response += f" ${val:>12,.0f}"
+                    elif key == 'roic_wacc_spread_pct':
+                        response += f" {val:>8+.1f}"
+                    elif key == 'fade_years':
+                        response += f" {val:>9.0f}"
+                    else:
+                        response += f" {val:>8.1f}"
+                else:
+                    response += f" {'N/A':>8}"
+            response += "\n"
+        
+        # Advantages summary
+        advantages = result.get('advantages', {})
+        if advantages:
+            response += "\nAdvantages vs Peer Average:\n"
+            labels = {
+                'avg_roic_pct': 'ROIC',
+                'roic_wacc_spread_pct': 'ROIC-WACC Spread',
+                'avg_op_margin_pct': 'Operating Margin',
+                'avg_revenue_growth_pct': 'Revenue Growth',
+                'avg_economic_profit': 'Economic Profit',
+                'fade_years': 'Fade Period',
+            }
+            for key, adv in advantages.items():
+                label = labels.get(key, key)
+                diff = adv['difference']
+                sign = "+" if diff > 0 else ""
+                status = "ADVANTAGE" if adv['advantage'] else "DISADVANTAGE"
+                response += f"  {label}: {sign}{diff:.1f} ({status})\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error comparing moat profiles: {str(e)}"
+
+
+@tool
+def analyze_moat_news(ticker: str, start_date: str = "", end_date: str = "") -> str:
+    """
+    Classify historical news into moat source categories using semantic analysis.
+    
+    Scans FNSPID news passages and classifies them by which moat source they
+    relate to (Network Effects, Switching Costs, Intangible Assets, etc.)
+    using a curated query bank and embedding similarity.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'NVDA')
+        start_date: Optional start date YYYY-MM-DD (empty string for all)
+        end_date: Optional end date YYYY-MM-DD (empty string for all)
+    
+    Returns:
+        News passages classified by moat source with evidence
+    """
+    try:
+        sd = start_date if start_date else None
+        ed = end_date if end_date else None
+        result = classify_passages_by_moat_source(ticker, start_date=sd, end_date=ed)
+        
+        if "error" in result:
+            return f"Unable to classify news for {ticker}: {result['error']}"
+        
+        response = f"Moat News Classification for {result['ticker']} ({result['date_range']}):\n\n"
+        response += f"Total classified passages: {result['total_classified']}\n"
+        
+        if result.get("primary_source"):
+            response += f"Primary moat signal: {result['primary_source'].replace('_', ' ').title()}\n\n"
+        
+        counts = result.get("source_counts", {})
+        response += "Moat Source Distribution:\n"
+        for source, count in sorted(counts.items(), key=lambda x: x[1], reverse=True):
+            response += f"  {source.replace('_', ' ').title()}: {count} passages\n"
+        
+        response += "\nTop Evidence by Source:\n"
+        for source, events in result.get("sources", {}).items():
+            if not events:
+                continue
+            display = source.replace("_", " ").title()
+            response += f"\n--- {display} ---\n"
+            for e in events[:3]:  # Top 3 per source
+                response += f"  [{e['date']}] (sim: {e['similarity']:.3f}, {e['strength']})\n"
+                response += f"    {e['headline']}\n"
+                response += f"    {e['passage_text'][:200]}...\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error analyzing moat news for {ticker}: {str(e)}"
+
+
+@tool
+def detect_moat_milestones(ticker: str) -> str:
+    """
+    Identify the most significant moat milestones in a company's history.
+    
+    Combines three signals to find milestones:
+    1. Price-anchored events: Notable price moves (>5%) with moat-relevant news
+    2. Moat-themed scans: News that strongly matches moat source patterns
+    3. ROIC overlay: Connection to year-over-year ROIC changes
+    
+    Each milestone is scored by price impact and news relevance.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'NVDA', 'MSFT')
+    
+    Returns:
+        Ranked milestones with timeline, moat source classification, and ROIC context
+    """
+    try:
+        result = _detect_moat_milestones_svc(ticker, top_n=15)
+        
+        if "error" in result and not result.get("milestones"):
+            return f"Unable to detect milestones for {ticker}: {result.get('error', 'Unknown error')}"
+        
+        milestones = result.get("milestones", [])
+        timeline = result.get("timeline", [])
+        dist = result.get("moat_source_distribution", {})
+        
+        response = f"Moat Milestones for {result['ticker']}:\n"
+        response += f"Total candidates analyzed: {result.get('total_candidates', 0)}\n\n"
+        
+        if dist:
+            response += "Moat Source Distribution:\n"
+            for source, count in sorted(dist.items(), key=lambda x: x[1], reverse=True):
+                response += f"  {source.replace('_', ' ').title()}: {count}\n"
+            response += "\n"
+        
+        response += "Top Milestones (by significance score):\n\n"
+        for i, m in enumerate(milestones[:10], 1):
+            source_display = m["moat_source"].replace("_", " ").title()
+            price_str = f" | Price: {m['price_impact_pct']:+.1f}%" if m.get("price_impact_pct") else ""
+            response += f"{i}. [{m['date']}] {m['headline']}\n"
+            response += f"   Source: {source_display} | Score: {m['milestone_score']:.3f} | Sim: {m['similarity']:.3f}{price_str}\n"
+            if m.get("roic_context"):
+                response += f"   ROIC: {m['roic_context']}\n"
+            response += f"   {m['passage_text'][:180]}...\n\n"
+        
+        if timeline:
+            response += "\nChronological Timeline:\n"
+            for m in timeline:
+                source_display = m["moat_source"].replace("_", " ").title()
+                response += f"  {m['date']}: [{source_display}] {m['headline'][:80]}\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error detecting milestones for {ticker}: {str(e)}"
+
+
+@tool
+def analyze_resilience(ticker: str, crisis: str = "") -> str:
+    """
+    Analyze how a company performed during market crises.
+    
+    Calculates drawdown, recovery time, and post-crisis returns for each
+    major market downturn (Dot-Com Bust, 2008 Financial Crisis, COVID-19,
+    2022 Rate Hikes). Also provides long-term CAGR and risk-adjusted metrics.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'NVDA')
+        crisis: Optional crisis ID to analyze a single crisis.
+                Options: 'dot_com_bust', 'financial_crisis', 'covid_crash', 'rate_hike_2022'
+                Leave empty for all crises.
+    
+    Returns:
+        Crisis resilience analysis with drawdowns, recovery times, and long-term metrics
+    """
+    try:
+        cid = crisis if crisis else None
+        result = analyze_crisis_resilience(ticker, crisis_id=cid)
+        
+        crises = result.get("crises", [])
+        long_term = result.get("long_term_metrics", {})
+        
+        response = f"Resilience Analysis for {result['ticker']}:\n\n"
+        
+        if not crises:
+            response += "No crisis data available (ticker may not have been listed during these periods).\n"
+        else:
+            response += "Crisis Performance:\n"
+            for c in crises:
+                response += f"\n  {c['label']} ({c['period']}):\n"
+                response += f"    Drawdown: {c['drawdown_pct']:.1f}%\n"
+                response += f"    Trough: ${c['trough_price']:.2f} on {c['trough_date']}\n"
+                if c["recovery_days"] is not None:
+                    response += f"    Recovery: {c['recovery_days']} days (by {c['recovery_date']})\n"
+                else:
+                    response += f"    Recovery: Not yet recovered in available data\n"
+                if c["post_crisis_1yr_return_pct"] is not None:
+                    response += f"    1-Year Post-Crisis Return: {c['post_crisis_1yr_return_pct']:+.1f}%\n"
+                if c["post_crisis_3yr_return_pct"] is not None:
+                    response += f"    3-Year Post-Crisis Return: {c['post_crisis_3yr_return_pct']:+.1f}%\n"
+        
+        if long_term:
+            response += f"\nLong-Term Metrics ({long_term.get('period', 'N/A')}, {long_term.get('years', 'N/A')} years):\n"
+            response += f"  CAGR: {long_term.get('cagr_pct', 'N/A')}%\n"
+            response += f"  Annualized Volatility: {long_term.get('annualized_volatility_pct', 'N/A')}%\n"
+            response += f"  Sharpe Ratio: {long_term.get('sharpe_ratio', 'N/A')}\n"
+            response += f"  Sortino Ratio: {long_term.get('sortino_ratio', 'N/A')}\n"
+            response += f"  Max Drawdown: {long_term.get('max_drawdown_pct', 'N/A')}%\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error analyzing resilience for {ticker}: {str(e)}"
+
+
+@tool
+def compare_resilience_to_peers(ticker: str, peer_tickers_str: str, crisis: str = "") -> str:
+    """
+    Compare how a company and its peers performed during market crises.
+    
+    Shows which companies had shallower drawdowns, faster recovery, and
+    better post-crisis returns. Helps validate whether moats provide
+    price protection during downturns.
+    
+    Args:
+        ticker: Primary ticker (e.g., 'NVDA')
+        peer_tickers_str: Comma-separated peer tickers (e.g., 'AMD,INTC,AVGO')
+        crisis: Optional crisis ID ('dot_com_bust', 'financial_crisis', 'covid_crash', 'rate_hike_2022')
+    
+    Returns:
+        Peer comparison table with drawdowns, recovery, and relative performance
+    """
+    try:
+        peer_list = [p.strip().upper() for p in peer_tickers_str.split(",") if p.strip()]
+        if not peer_list:
+            return "Error: Please provide at least one peer ticker."
+        
+        cid = crisis if crisis else None
+        result = compare_resilience(ticker, peer_list, crisis_id=cid)
+        
+        crisis_comp = result.get("crisis_comparison", [])
+        lt_comp = result.get("long_term_comparison", [])
+        
+        response = f"Resilience Comparison: {result['ticker']} vs {', '.join(result['peers'])}:\n\n"
+        
+        if crisis_comp:
+            # Group by crisis
+            by_crisis: dict[str, list] = {}
+            for row in crisis_comp:
+                c_label = row.get("crisis", "Unknown")
+                if c_label not in by_crisis:
+                    by_crisis[c_label] = []
+                by_crisis[c_label].append(row)
+            
+            for c_label, rows in by_crisis.items():
+                response += f"--- {c_label} ---\n"
+                response += f"{'Ticker':<8} {'Drawdown':>10} {'Recovery':>12} {'1yr Post':>10} {'3yr Post':>10}\n"
+                response += "-" * 54 + "\n"
+                for r in rows:
+                    dd = f"{r['drawdown_pct']:.1f}%"
+                    rec = f"{r['recovery_days']}d" if r.get("recovery_days") else "N/A"
+                    p1 = f"{r['post_crisis_1yr_return_pct']:+.1f}%" if r.get("post_crisis_1yr_return_pct") is not None else "N/A"
+                    p3 = f"{r['post_crisis_3yr_return_pct']:+.1f}%" if r.get("post_crisis_3yr_return_pct") is not None else "N/A"
+                    marker = " <--" if r["ticker"] == ticker.upper() else ""
+                    rel = ""
+                    if r.get("relative_vs_peers_pct") is not None:
+                        rel = f" (rel: {r['relative_vs_peers_pct']:+.1f}%)"
+                    response += f"{r['ticker']:<8} {dd:>10} {rec:>12} {p1:>10} {p3:>10}{marker}{rel}\n"
+                response += "\n"
+        else:
+            response += "No crisis comparison data available.\n\n"
+        
+        if lt_comp:
+            response += "Long-Term Comparison:\n"
+            response += f"{'Ticker':<8} {'CAGR':>8} {'Sharpe':>8} {'Sortino':>9} {'MaxDD':>8}\n"
+            response += "-" * 45 + "\n"
+            for lt in lt_comp:
+                cagr = f"{lt.get('cagr_pct', 0):.1f}%"
+                sharpe = f"{lt.get('sharpe_ratio', 0):.2f}"
+                sortino = f"{lt.get('sortino_ratio', 0):.2f}"
+                maxdd = f"{lt.get('max_drawdown_pct', 0):.1f}%"
+                marker = " <--" if lt["ticker"] == ticker.upper() else ""
+                response += f"{lt['ticker']:<8} {cagr:>8} {sharpe:>8} {sortino:>9} {maxdd:>8}{marker}\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error comparing resilience: {str(e)}"
 
 
 # ============================================================================
@@ -716,10 +1335,17 @@ def create_moat_agent():
         get_stock_news,
         get_stock_prices,
         get_stock_time_series,
-        get_moat_characteristics,
-        search_news_by_topic,  # Semantic search in historical news
-        get_roic_analysis,  # NEW: ROIC hurdle check (quantitative moat proof)
-        compare_roic_to_peers,  # NEW: ROIC peer comparison
+        get_moat_characteristics,       # Data-driven moat source identification
+        search_news_by_topic,            # Semantic search in historical news
+        get_roic_analysis,               # ROIC + excess profit + fade period
+        compare_roic_to_peers,           # Single-dimension ROIC peer comparison
+        get_valuation_analysis,          # Fair value (DCF) + P/FV ratio + star rating
+        get_uncertainty_analysis,        # Uncertainty rating + margin of safety
+        compare_moat_to_peers,           # Multi-dimensional peer comparison
+        analyze_moat_news,              # News-to-moat-source classification
+        detect_moat_milestones,         # Milestone detection (price + news + ROIC)
+        analyze_resilience,             # Crisis drawdown and recovery analysis
+        compare_resilience_to_peers,    # Peer resilience comparison
     ]
     
     # Create LLM
@@ -809,11 +1435,18 @@ def invoke_agent_windowed(
         The agent's response as a string
     """
     # Construct window-aware query with metadata
+    if output_mode == "rating":
+        policy_note = "Full rating allowed - MUST include structured moat assessment JSON block with [MOAT_ASSESSMENT_START] and [MOAT_ASSESSMENT_END] markers"
+    elif output_mode == "direction":
+        policy_note = "Direction only (no rating) - provide direction assessment but no Wide/Narrow/None rating"
+    else:
+        policy_note = "Signals only (no moat analysis) - tactical signals and market sentiment only"
+    
     window_context = f"""
 [WINDOW METADATA]
 - Analysis Period: {window_start} to {window_end} ({window_duration:.1f} years)
 - Output Mode: {output_mode}
-- Policy: {"Full rating allowed" if output_mode == "rating" else "Direction only (no rating)" if output_mode == "direction" else "Signals only (no moat analysis)"}
+- Policy: {policy_note}
 
 User Query: {query}
 """
