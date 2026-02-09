@@ -1,11 +1,14 @@
 """
-Overall moat score endpoint for full 2015-2025 analysis.
+Overall moat score endpoint for comprehensive 2000-2025 analysis.
 
-The moat rating is defined only for the fixed period 2015-01-01 to 2025-12-31.
-Query params start_date/end_date are ignored; the response always reflects
-and displays this analysis period.
+The moat rating uses the LLM agent's comprehensive analysis combining:
+- ROIC and financial metrics (2006-2025 when available)
+- News analysis (2000-2023 FNSPID, 2024+ yfinance)
+- Price resilience and milestones
+- Qualitative moat reasoning
 
-This endpoint now uses REAL data-driven analysis instead of mock scores.
+This provides the highest quality moat assessment by integrating quantitative
+and qualitative factors.
 """
 
 from fastapi import APIRouter, HTTPException, Query
@@ -13,25 +16,23 @@ from datetime import datetime
 import hashlib
 import logging
 
-from services.data_driven_moat_scorer import DataDrivenMoatScorer
+from agent.moat_tutor import invoke_agent_windowed
+from services.parser import AgentResponseParser
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/moat", tags=["moat"])
 
 # Fixed analysis period for overall moat rating (not user-configurable)
-MOAT_START = "2015-01-01"
+MOAT_START = "2000-01-01"
 MOAT_END = "2025-12-31"
 
 # In-memory cache for computed scores (in production, use Redis or similar)
 _moat_cache: dict = {}
 
-# Global scorer instance (reused across requests)
-_moat_scorer = DataDrivenMoatScorer()
-
 
 def _cache_key(ticker: str) -> str:
-    """Cache key is ticker-only; period is always 2015-2025."""
+    """Cache key is ticker-only; period is always 2000-2025."""
     return hashlib.md5(f"{ticker}_{MOAT_START}_{MOAT_END}".encode()).hexdigest()
 
 
@@ -40,14 +41,17 @@ async def get_overall_moat_score(
     ticker: str = Query(..., description="Stock ticker symbol"),
 ):
     """
-    Get overall moat score for a ticker.
+    Get overall moat score for a ticker using comprehensive LLM agent analysis.
 
-    The rating is always computed for the fixed analysis period 2015-01-01
-    to 2025-12-31. The response field time_range always reflects this period.
-    Any start_date/end_date query params are ignored.
+    The rating is computed for the fixed analysis period 2000-01-01 to 2025-12-31.
+    Uses the LLM agent which combines:
+    - ROIC and financial metrics (2006-2025 when available)
+    - News analysis (2000-2023 FNSPID, 2024+ yfinance)
+    - Price resilience and milestones
+    - Qualitative moat reasoning
 
     Returns:
-        OverallMoatScore with comprehensive moat analysis and time_range 2015-2025.
+        OverallMoatScore with comprehensive moat analysis and time_range 2000-2025.
     """
     try:
         key = _cache_key(ticker.upper())
@@ -62,6 +66,7 @@ async def get_overall_moat_score(
         return moat_score
 
     except Exception as e:
+        logger.error(f"Error getting overall moat score for {ticker}: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to compute moat score: {str(e)}"
@@ -70,13 +75,13 @@ async def get_overall_moat_score(
 
 def _compute_moat_score(ticker: str) -> dict:
     """
-    Compute overall moat score for a ticker over the fixed period 2015-2025.
-
-    Uses real data-driven analysis:
-    1. Loads historical price data from yfinance (2015-2025)
-    2. Analyzes news coverage from FNSPID dataset
-    3. Calculates quantitative metrics for each moat factor
-    4. Scores based on financial performance and stability
+    Compute overall moat score using comprehensive LLM agent analysis.
+    
+    Uses the LLM agent which combines:
+    1. ROIC and financial metrics (2006-2025 when available)
+    2. News analysis (2000-2023 FNSPID, 2024+ yfinance)
+    3. Price resilience and milestones
+    4. Qualitative moat reasoning
     
     Args:
         ticker: Stock ticker symbol
@@ -84,20 +89,79 @@ def _compute_moat_score(ticker: str) -> dict:
     Returns:
         Dict with overall_score, rating, confidence, factors, trend, summary
     """
-    logger.info(f"Computing data-driven moat score for {ticker}")
+    logger.info(f"Computing comprehensive moat score for {ticker} using LLM agent")
     
     try:
-        # Use the data-driven scorer
-        score_data = _moat_scorer.calculate_moat_score(
-            ticker=ticker,
-            start_date=MOAT_START,
-            end_date=MOAT_END
+        # Calculate duration for window policy
+        from datetime import datetime
+        start_dt = datetime.strptime(MOAT_START, "%Y-%m-%d")
+        end_dt = datetime.strptime(MOAT_END, "%Y-%m-%d")
+        duration_years = (end_dt - start_dt).days / 365.25
+        
+        # Invoke agent with full analysis query - explicitly request structured assessment
+        query = f"Analyze {ticker}'s economic moat comprehensively from {MOAT_START} to {MOAT_END}. Provide a full moat analysis with all sections including the structured moat assessment JSON block."
+        
+        raw_response = invoke_agent_windowed(
+            query=query,
+            window_start=MOAT_START,
+            window_end=MOAT_END,
+            window_duration=duration_years,
+            output_mode="rating",  # Full structural rating for 20+ year window
+            conversation_history=None
         )
         
+        # Parse the agent response
+        parser = AgentResponseParser()
+        parsed = parser.parse(raw_response, ticker, MOAT_START, MOAT_END)
+        
+        # Extract moat assessment
+        if not parsed.moat_assessment:
+            logger.warning(f"No moat assessment found in agent response for {ticker}")
+            raise ValueError("Agent response did not include structured moat assessment")
+        
+        assessment = parsed.moat_assessment
+        
+        # Convert to OverallMoatScore format
+        score_data = {
+            "overall_score": assessment.overall_score,
+            "rating": assessment.overall_rating,
+            "confidence": assessment.overall_confidence,
+            "factors": {
+                "network_effects": assessment.network_effects.score,
+                "switching_costs": assessment.switching_costs.score,
+                "intangible_assets": assessment.intangible_assets.score,
+                "cost_advantages": assessment.cost_advantages.score,
+                "regulatory_barriers": assessment.regulatory_barriers.score,
+            },
+            "trend": assessment.network_effects.direction.lower() if assessment.network_effects.direction else "stable",
+            "summary": parsed.summary or f"Comprehensive moat analysis for {ticker} covering {MOAT_START} to {MOAT_END}.",
+            "time_range": f"{MOAT_START} to {MOAT_END}",
+            "computed_at": datetime.utcnow().isoformat(),
+            "from_cache": False,
+        }
+        
+        # Determine trend from dimension directions
+        directions = [
+            assessment.network_effects.direction,
+            assessment.switching_costs.direction,
+            assessment.intangible_assets.direction,
+            assessment.cost_advantages.direction,
+            assessment.ecosystem_lockin.direction,
+        ]
+        strengthening_count = sum(1 for d in directions if d == "Strengthening")
+        weakening_count = sum(1 for d in directions if d == "Weakening")
+        
+        if strengthening_count > weakening_count:
+            score_data["trend"] = "strengthening"
+        elif weakening_count > strengthening_count:
+            score_data["trend"] = "weakening"
+        else:
+            score_data["trend"] = "stable"
+        
         logger.info(
-            f"Computed moat score for {ticker}: "
+            f"Computed comprehensive moat score for {ticker}: "
             f"{score_data['overall_score']:.2f} ({score_data['rating']}) "
-            f"confidence={score_data['confidence']}"
+            f"confidence={score_data['confidence']}, trend={score_data['trend']}"
         )
         
         return score_data
@@ -117,7 +181,7 @@ def _compute_moat_score(ticker: str) -> dict:
                 "regulatory_barriers": 3.0,
             },
             "trend": "stable",
-            "summary": f"Unable to compute moat score for {ticker} due to data availability issues. Using default neutral values.",
+            "summary": f"Unable to compute moat score for {ticker} due to error: {str(e)}",
             "time_range": f"{MOAT_START} to {MOAT_END}",
             "computed_at": datetime.utcnow().isoformat(),
             "from_cache": False,
