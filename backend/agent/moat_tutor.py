@@ -21,6 +21,7 @@ from langchain_openai import ChatOpenAI
 
 from services.stock_data import get_stock_data_service
 from services.news_provider import get_news_for_agent
+from services.roic_calculator import check_roic_hurdle, compare_roic_to_peers
 
 # Import FNSPID retrieval for historical semantic search
 try:
@@ -92,6 +93,50 @@ Your goal is not to summarize data, but to **reason about how these signals affe
   - If the user asks for GENERAL analysis (e.g., "why did the stock move"), omit the query for chronological summary
 - For recent queries (2024+), the tool automatically uses yfinance
 - Analyze how specific events relate to price movements through the lens of moat characteristics
+
+## ROIC Analysis (NEW - Quantitative Moat Proof)
+
+You now have access to ROIC (Return on Invested Capital) analysis tools that provide MATHEMATICAL PROOF of economic moats:
+
+**When to Use ROIC:**
+- When analyzing moats for a ticker (always check ROIC as part of your analysis)
+- When the user asks "does this company have a moat?"
+- When explaining competitive advantages quantitatively
+- When comparing companies in the same industry
+
+**How to Use:**
+1. `get_roic_analysis(ticker, years=10)` - Gets 10-year ROIC history and hurdle check
+2. `compare_roic_to_peers(ticker, "PEER1,PEER2,PEER3", years=10)` - Compares vs peers
+
+**Key Concepts to Explain:**
+
+**ROIC Formula:**
+- ROIC = NOPAT / Invested Capital
+- NOPAT = Operating Income × (1 - Tax Rate)
+- Invested Capital = Equity + Debt - Excess Cash
+
+**What ROIC Tells Us:**
+- **ROIC > WACC (10% for tech)** = Company earns more than its cost of capital → Value creation
+- **ROIC < WACC** = Company destroys value → No moat
+- **Sustained high ROIC (10+ years)** = Durable competitive advantage → Strong moat
+
+**Connecting ROIC to Moat Sources:**
+
+- **High ROIC + Network Effects**: Platform scales with low incremental capital. Example: "NVDA's 30% ROIC shows it can grow the CUDA ecosystem without proportional capital investment—classic network effects."
+
+- **High ROIC + Switching Costs**: Captive customers fund reinvestment at high returns. Example: "MSFT's 40%+ ROIC reflects enterprise switching costs—once companies integrate Office/Azure, MSFT earns high returns on incremental investment."
+
+- **High ROIC + Intangible Assets**: Brand/patents enable premium pricing with efficient capital use. Example: "AAPL's 40% ROIC demonstrates pricing power from brand intangibles—customers pay premium prices while AAPL maintains asset-light operations."
+
+- **High ROIC + Cost Advantages**: Scale or unique resources lower costs vs peers. Example: "If Company A has 25% ROIC while peers average 10%, Company A likely has structural cost advantages (scale, technology, unique resources)."
+
+- **Declining ROIC**: May signal moat erosion, increased competition, or capital intensity. Example: "ROIC dropping from 20% to 12% over 5 years suggests competitive pressure is eroding the moat."
+
+**Teaching Moments:**
+- Always explain WHY high ROIC = moat (can reinvest at high rates → compounds value)
+- Compare ROIC to peers to show if advantage is company-specific or industry-wide
+- Use ROIC trends to assess if moat is strengthening or weakening
+- Explain the 10-year window: "We need 10 years to see ROIC persist through economic cycles—one good year doesn't prove a moat."
 
 ## Mandatory Output Structure
 
@@ -491,6 +536,147 @@ def search_news_by_topic(ticker: str, query: str, start_date: str, end_date: str
     )
 
 
+@tool
+def get_roic_analysis(ticker: str, years: int = 10) -> str:
+    """
+    Calculate Return on Invested Capital (ROIC) and check moat hurdle.
+    
+    ROIC is the definitive quantitative proof of economic moats. A company with 
+    sustained ROIC > Cost of Capital (WACC) over 10 years demonstrates durable
+    competitive advantages that allow it to generate returns above what investors require.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'NVDA', 'AAPL', 'MSFT')
+        years: Number of years to analyze (default: 10)
+    
+    Returns:
+        Formatted analysis showing:
+        - Average ROIC over the period
+        - Comparison to estimated WACC (cost of capital)
+        - Year-by-year ROIC values
+        - Moat strength interpretation
+    
+    Example:
+        get_roic_analysis("NVDA", 10) returns ROIC analysis showing NVDA's
+        30%+ average ROIC over 10 years, far exceeding its ~10% WACC.
+    """
+    try:
+        result = check_roic_hurdle(ticker, years=years, use_cache=True)
+        
+        if "error" in result:
+            return f"Unable to calculate ROIC for {ticker}: {result['error']}\n\nThis may mean fundamental data is not available for this ticker."
+        
+        # Format response
+        response = f"ROIC Analysis for {result['ticker']} ({result['period']}):\n\n"
+        response += f"Average ROIC: {result['avg_roic_pct']:.2f}%\n"
+        response += f"Median ROIC: {result['median_roic_pct']:.2f}%\n"
+        response += f"Range: {result['min_roic_pct']:.2f}% to {result['max_roic_pct']:.2f}%\n"
+        response += f"Cost of Capital (WACC): {result['wacc_pct']:.2f}%\n\n"
+        
+        response += f"Years Above WACC: {result['years_above_wacc']}/{result['years_analyzed']} ({result['years_above_hurdle_pct']:.1f}%)\n"
+        response += f"ROIC Trend: {result['roic_trend'].title()}\n"
+        response += f"Hurdle Passed: {'Yes ✓' if result['hurdle_passed'] else 'No ✗'}\n\n"
+        
+        # Add interpretation
+        if result['hurdle_passed']:
+            response += "Interpretation:\n"
+            response += f"{result['ticker']} demonstrates a STRONG ECONOMIC MOAT. "
+            response += f"With an average ROIC of {result['avg_roic_pct']:.1f}% consistently exceeding its cost of capital ({result['wacc_pct']:.1f}%), "
+            response += "the company generates returns far above what investors require. "
+            response += "This is mathematical proof of durable competitive advantages—the company can reinvest capital at high rates of return, "
+            response += "which compounds value over time.\n\n"
+            
+            if result['roic_trend'] == "strengthening":
+                response += "The strengthening trend suggests the moat is widening, making it even harder for competitors to replicate the business model."
+            elif result['roic_trend'] == "stable":
+                response += "The stable trend suggests the moat remains durable and defensible."
+        else:
+            response += "Interpretation:\n"
+            response += f"The ROIC data suggests {result['ticker']} may not have a strong economic moat. "
+            if result['avg_roic_pct'] < result['wacc_pct']:
+                response += "Average ROIC below WACC indicates the company destroys value—it costs more to fund the business than it earns.\n"
+            else:
+                response += "While ROIC exceeds WACC, the inconsistency suggests competitive advantages may be weak or temporary.\n"
+        
+        # Add recent year-by-year breakdown (last 5 years)
+        response += "\nRecent ROIC History:\n"
+        for year_data in result['annual_data'][:5]:
+            above_marker = "✓" if year_data['above_wacc'] else "✗"
+            response += f"  {year_data['year']}: {year_data['roic_pct']:.2f}% {above_marker}\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error calculating ROIC for {ticker}: {str(e)}"
+
+
+@tool
+def compare_roic_to_peers(ticker: str, peer_tickers_str: str, years: int = 10) -> str:
+    """
+    Compare a company's ROIC to its peer group average.
+    
+    This helps contextualize whether a company's ROIC truly represents a competitive
+    advantage or is just industry-standard. A wide moat company should have ROIC
+    significantly higher than peers.
+    
+    Args:
+        ticker: Primary ticker to analyze (e.g., 'NVDA')
+        peer_tickers_str: Comma-separated peer tickers (e.g., 'AMD,INTC,AVGO,MU')
+        years: Number of years to analyze (default: 10)
+    
+    Returns:
+        Comparison showing ticker vs peer average ROIC and relative advantage
+    
+    Example:
+        compare_roic_to_peers("NVDA", "AMD,INTC,AVGO", 10) shows NVDA's ROIC
+        advantage over semiconductor peers.
+    """
+    try:
+        # Parse peer tickers
+        peer_list = [p.strip().upper() for p in peer_tickers_str.split(',') if p.strip()]
+        
+        if not peer_list:
+            return "Error: Please provide at least one peer ticker (comma-separated)."
+        
+        result = compare_roic_to_peers(ticker, peer_list, years=years, use_cache=True)
+        
+        if "error" in result:
+            return f"Unable to compare ROIC: {result['error']}"
+        
+        # Format response
+        response = f"ROIC Peer Comparison ({result['period']}):\n\n"
+        response += f"{result['ticker']} Average ROIC: {result['ticker_avg_roic_pct']:.2f}%\n"
+        response += f"Peer Average ROIC: {result['peer_avg_roic_pct']:.2f}%\n"
+        response += f"ROIC Advantage: {result['roic_advantage_pct']:+.2f}%\n\n"
+        
+        response += "Peer Breakdown:\n"
+        for peer in result['peer_data']:
+            response += f"  {peer['ticker']}: {peer['avg_roic_pct']:.2f}%\n"
+        
+        # Add interpretation
+        response += "\nInterpretation:\n"
+        advantage_pct = result['roic_advantage_pct']
+        
+        if advantage_pct > 10:
+            response += f"{result['ticker']} has a SIGNIFICANT ROIC advantage ({advantage_pct:+.2f}%) over peers. "
+            response += "This indicates a strong, defensible competitive moat—the company operates with structural advantages "
+            response += "(e.g., superior technology, network effects, brand power) that peers cannot easily replicate.\n"
+        elif advantage_pct > 5:
+            response += f"{result['ticker']} has a MODERATE ROIC advantage ({advantage_pct:+.2f}%) over peers. "
+            response += "This suggests competitive advantages exist but may not be as durable or wide.\n"
+        elif advantage_pct > 0:
+            response += f"{result['ticker']} has a SLIGHT ROIC advantage ({advantage_pct:+.2f}%) over peers. "
+            response += "The advantage is modest—monitor whether it's widening or eroding.\n"
+        else:
+            response += f"{result['ticker']} has LOWER ROIC ({advantage_pct:.2f}%) than peers. "
+            response += "This suggests the company may not have a meaningful competitive moat in this industry.\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error comparing ROIC: {str(e)}"
+
+
 # ============================================================================
 # LLM Configuration
 # ============================================================================
@@ -532,6 +718,8 @@ def create_moat_agent():
         get_stock_time_series,
         get_moat_characteristics,
         search_news_by_topic,  # Semantic search in historical news
+        get_roic_analysis,  # NEW: ROIC hurdle check (quantitative moat proof)
+        compare_roic_to_peers,  # NEW: ROIC peer comparison
     ]
     
     # Create LLM

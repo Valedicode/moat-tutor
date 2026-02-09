@@ -23,6 +23,7 @@ from services.fnspid_retrieval import (
     get_passage_count,
     get_date_range,
 )
+from services.roic_calculator import check_roic_hurdle
 
 logger = logging.getLogger(__name__)
 
@@ -83,21 +84,29 @@ class DataDrivenMoatScorer:
             has_news = is_fnspid_data_available(ticker)
             news_metrics = self._calculate_news_metrics(ticker) if has_news else {}
             
+            # Try to get ROIC data
+            roic_data = self._get_roic_data(ticker)
+            has_roic = roic_data is not None
+            
             # Calculate moat factors
             factors = {
                 "network_effects": self._score_network_effects(price_metrics, news_metrics),
                 "switching_costs": self._score_switching_costs(price_metrics, news_metrics),
-                "intangible_assets": self._score_intangible_assets(price_metrics, news_metrics),
-                "cost_advantages": self._score_cost_advantages(price_metrics, news_metrics),
+                "intangible_assets": self._score_intangible_assets(price_metrics, news_metrics, roic_data),
+                "cost_advantages": self._score_cost_advantages(price_metrics, news_metrics, roic_data),
                 "regulatory_barriers": self._score_regulatory_barriers(price_metrics, news_metrics),
             }
+            
+            # Add financial performance factor if ROIC available
+            if has_roic:
+                factors["financial_performance"] = self._score_financial_performance(roic_data)
             
             # Calculate overall score and rating
             overall_score = np.mean(list(factors.values()))
             rating = self._determine_rating(overall_score, factors)
-            confidence = self._determine_confidence(price_metrics, has_news)
-            trend = self._determine_trend(price_metrics)
-            summary = self._generate_summary(ticker, overall_score, rating, factors, trend)
+            confidence = self._determine_confidence(price_metrics, has_news, has_roic)
+            trend = self._determine_trend(price_metrics, roic_data)
+            summary = self._generate_summary(ticker, overall_score, rating, factors, trend, roic_data)
             
             return {
                 "overall_score": round(overall_score, 2),
@@ -184,6 +193,22 @@ class DataDrivenMoatScorer:
         
         return metrics
     
+    def _get_roic_data(self, ticker: str) -> Optional[dict]:
+        """
+        Get ROIC data for a ticker.
+        
+        Returns None if ROIC data unavailable (e.g., fundamental data missing).
+        """
+        try:
+            roic_result = check_roic_hurdle(ticker, years=10, use_cache=True)
+            if "error" in roic_result:
+                logger.warning(f"ROIC data not available for {ticker}: {roic_result.get('error')}")
+                return None
+            return roic_result
+        except Exception as e:
+            logger.warning(f"Could not calculate ROIC for {ticker}: {e}")
+            return None
+    
     # ========================================================================
     # Factor Scoring Methods
     # ========================================================================
@@ -261,7 +286,7 @@ class DataDrivenMoatScorer:
         
         return min(5.0, max(1.0, round(score, 1)))
     
-    def _score_intangible_assets(self, price: dict, news: dict) -> float:
+    def _score_intangible_assets(self, price: dict, news: dict, roic: Optional[dict] = None) -> float:
         """
         Score intangible assets (brand, patents, IP) based on premium valuation.
         
@@ -295,9 +320,17 @@ class DataDrivenMoatScorer:
         elif vol < 35:
             score += 0.3
         
+        # ROIC bonus (high ROIC suggests pricing power from brand/IP)
+        if roic and roic.get('hurdle_passed'):
+            avg_roic_pct = roic.get('avg_roic_pct', 0)
+            if avg_roic_pct > 30:
+                score += 0.7
+            elif avg_roic_pct > 20:
+                score += 0.4
+        
         return min(5.0, max(1.0, round(score, 1)))
     
-    def _score_cost_advantages(self, price: dict, news: dict) -> float:
+    def _score_cost_advantages(self, price: dict, news: dict, roic: Optional[dict] = None) -> float:
         """
         Score cost advantages based on margin proxies and performance.
         
@@ -330,6 +363,14 @@ class DataDrivenMoatScorer:
             score += 0.7
         elif recent_return > 0.2:  # >20%
             score += 0.4
+        
+        # ROIC bonus (high ROIC indicates cost efficiency)
+        if roic and roic.get('hurdle_passed'):
+            avg_roic_pct = roic.get('avg_roic_pct', 0)
+            if avg_roic_pct > 25:
+                score += 0.8
+            elif avg_roic_pct > 15:
+                score += 0.5
         
         return min(5.0, max(1.0, round(score, 1)))
     
@@ -369,6 +410,47 @@ class DataDrivenMoatScorer:
         
         return min(5.0, max(1.0, round(score, 1)))
     
+    def _score_financial_performance(self, roic: dict) -> float:
+        """
+        Score based on ROIC > WACC over 10 years (quantitative moat proof).
+        
+        Strong moat:
+        - ROIC > 15% consistently
+        - ROIC > WACC for 8+ years (80%+)
+        - Stable or improving ROIC trend
+        """
+        score = 2.5  # Base neutral score
+        
+        avg_roic_pct = roic.get('avg_roic_pct', 0)
+        years_above_hurdle_pct = roic.get('years_above_hurdle_pct', 0)
+        roic_trend = roic.get('roic_trend', 'stable')
+        
+        # Bonus for high average ROIC
+        if avg_roic_pct > 30:
+            score += 1.5
+        elif avg_roic_pct > 20:
+            score += 1.0
+        elif avg_roic_pct > 15:
+            score += 0.6
+        elif avg_roic_pct > 10:
+            score += 0.3
+        
+        # Bonus for consistency (years above WACC)
+        if years_above_hurdle_pct >= 90:
+            score += 1.0
+        elif years_above_hurdle_pct >= 70:
+            score += 0.6
+        elif years_above_hurdle_pct >= 50:
+            score += 0.3
+        
+        # Bonus for strengthening trend
+        if roic_trend == "strengthening":
+            score += 0.5
+        elif roic_trend == "weakening":
+            score -= 0.5
+        
+        return min(5.0, max(1.0, round(score, 1)))
+    
     # ========================================================================
     # Rating and Summary Methods
     # ========================================================================
@@ -386,12 +468,15 @@ class DataDrivenMoatScorer:
         else:
             return "Narrow"
     
-    def _determine_confidence(self, price: dict, has_news: bool) -> str:
+    def _determine_confidence(self, price: dict, has_news: bool, has_roic: bool = False) -> str:
         """Determine confidence level based on data availability and quality."""
         data_points = len([v for v in price.values() if v is not None])
         
-        # High confidence: full data + news
-        if data_points >= 10 and has_news:
+        # High confidence: full data + news + ROIC
+        if data_points >= 10 and has_news and has_roic:
+            return "High"
+        # Medium-high confidence: good price data + ROIC or news
+        elif data_points >= 10 and (has_news or has_roic):
             return "High"
         # Medium confidence: good price data
         elif data_points >= 8:
@@ -400,8 +485,15 @@ class DataDrivenMoatScorer:
         else:
             return "Low"
     
-    def _determine_trend(self, price: dict) -> str:
-        """Determine moat trend from recent performance."""
+    def _determine_trend(self, price: dict, roic: Optional[dict] = None) -> str:
+        """Determine moat trend from recent performance and ROIC."""
+        # If ROIC data available, use it (more reliable for moat trend)
+        if roic:
+            roic_trend = roic.get('roic_trend', 'stable')
+            if roic_trend in ['strengthening', 'weakening', 'stable']:
+                return roic_trend
+        
+        # Fallback to price-based trend
         recent_return = price.get('recent_return', 0)
         total_return = price.get('total_return', 0)
         
@@ -424,7 +516,8 @@ class DataDrivenMoatScorer:
         overall_score: float,
         rating: str,
         factors: dict,
-        trend: str
+        trend: str,
+        roic: Optional[dict] = None
     ) -> str:
         """Generate human-readable summary of moat analysis."""
         # Find strongest factors
@@ -445,6 +538,11 @@ class DataDrivenMoatScorer:
         
         summary += ". "
         
+        # Add ROIC context if available
+        if roic and roic.get('hurdle_passed'):
+            avg_roic = roic.get('avg_roic_pct', 0)
+            summary += f"The company has sustained an average ROIC of {avg_roic:.1f}% over {roic.get('years_analyzed', 10)} years, significantly above its cost of capital ({roic.get('wacc_pct', 10):.1f}%), providing quantitative proof of durable competitive advantages. "
+        
         # Add trend
         if trend == "strengthening":
             summary += "The competitive position has strengthened in recent years, "
@@ -454,7 +552,7 @@ class DataDrivenMoatScorer:
             summary += "The competitive position has remained stable, "
         
         # Add score context
-        summary += f"supported by quantitative analysis of 2015-2025 market data (score: {overall_score:.1f}/5.0)."
+        summary += f"supported by comprehensive analysis of market and fundamental data (score: {overall_score:.1f}/5.0)."
         
         return summary
     
