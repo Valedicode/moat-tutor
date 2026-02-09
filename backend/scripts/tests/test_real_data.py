@@ -4,6 +4,13 @@ Test script for real stock data integration
 This script tests the new stock data service and tools with real CSV data.
 """
 
+import sys
+from pathlib import Path
+
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
 from services.stock_data import get_stock_data_service
 
 

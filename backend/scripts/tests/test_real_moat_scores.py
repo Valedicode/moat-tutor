@@ -7,8 +7,9 @@ Tests the new moat scoring system with various companies.
 import sys
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
 
 from services.data_driven_moat_scorer import DataDrivenMoatScorer
 

@@ -13,8 +13,9 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-# Add backend to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
 
 from services.alpha_vantage_provider import (
     fetch_alpha_vantage_news,

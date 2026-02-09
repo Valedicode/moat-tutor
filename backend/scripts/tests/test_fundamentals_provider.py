@@ -4,6 +4,13 @@ Test script for Alpha Vantage fundamentals provider
 Run this to verify the API connection and understand the response structure.
 """
 
+import sys
+from pathlib import Path
+
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
 import json
 from dotenv import load_dotenv
 

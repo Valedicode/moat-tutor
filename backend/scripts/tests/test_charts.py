@@ -11,7 +11,12 @@ This script tests:
 
 import sys
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
+
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
 
 # Fix Windows console encoding
 if sys.platform == 'win32':

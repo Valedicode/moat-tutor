@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 
-sys.path.insert(0, str(Path(__file__).parent))
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
 
 import yfinance as yf
 import pandas as pd

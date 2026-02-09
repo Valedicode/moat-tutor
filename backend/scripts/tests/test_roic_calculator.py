@@ -4,6 +4,13 @@ Test script for ROIC calculator
 Tests ROIC calculations with real data from Alpha Vantage.
 """
 
+import sys
+from pathlib import Path
+
+# Add backend directory to path
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -67,9 +74,9 @@ def test_roic_hurdle_nvda():
         print(f"  Hurdle Passed: {result['hurdle_passed']}")
         
         if result['hurdle_passed']:
-            print("\n  ✓ NVDA demonstrates sustained high ROIC (moat evidence)")
+            print("\n  [PASS] NVDA demonstrates sustained high ROIC (moat evidence)")
         else:
-            print("\n  ✗ NVDA does not meet ROIC hurdle criteria")
+            print("\n  [FAIL] NVDA does not meet ROIC hurdle criteria")
         
         return True
         
