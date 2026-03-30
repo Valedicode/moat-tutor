@@ -7,10 +7,12 @@ Provides endpoints to calculate ROIC, check moat hurdle, and compare to peers.
 from fastapi import APIRouter, HTTPException, Query
 import logging
 
-from services.roic_calculator import check_roic_hurdle, compare_roic_to_peers, compare_moat_profiles
+from services.roic_calculator import check_roic_hurdle, compare_roic_to_peers, compare_moat_profiles, estimate_wacc_detailed
 from services.valuation_estimator import estimate_fair_value, calculate_uncertainty_rating
 from services.resilience_analyzer import analyze_crisis_resilience, compare_resilience
 from services.moat_news_classifier import classify_passages_by_moat_source, detect_moat_milestones
+from services.capital_allocation import assess_capital_allocation
+from services.financial_health import assess_financial_health
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +138,30 @@ async def compare_fundamentals(
             status_code=500,
             detail=f"Failed to compare ROIC: {str(e)}"
         )
+
+
+@router.get("/{ticker}/wacc")
+async def get_wacc(ticker: str):
+    """
+    Get detailed WACC breakdown using Morningstar-style building blocks.
+
+    Shows cost of equity (systematic risk category), cost of debt
+    (credit risk category), normalized capital structure, and final WACC
+    with full transparency into the methodology.
+
+    Args:
+        ticker: Stock ticker symbol
+
+    Returns:
+        WACC estimate with component breakdown and risk classifications
+    """
+    try:
+        logger.info(f"Estimating WACC for {ticker}")
+        result = estimate_wacc_detailed(ticker.upper(), use_cache=True)
+        return result
+    except Exception as e:
+        logger.error(f"Error estimating WACC for {ticker}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to estimate WACC: {str(e)}")
 
 
 @router.get("/{ticker}/summary")
@@ -334,6 +360,54 @@ async def get_moat_comparison(
             status_code=500,
             detail=f"Failed to compare moat profiles: {str(e)}"
         )
+
+
+@router.get("/{ticker}/capital-allocation")
+async def get_capital_allocation(ticker: str):
+    """
+    Get Capital Allocation assessment for a ticker.
+
+    Evaluates management's capital allocation decisions across three pillars:
+    Balance Sheet Management, Investment Strategy, and Shareholder Distributions.
+    Rates as Exemplary / Standard / Poor.
+
+    Args:
+        ticker: Stock ticker symbol
+
+    Returns:
+        Capital allocation rating, pillar scores, and explanation
+    """
+    try:
+        logger.info(f"Assessing capital allocation for {ticker}")
+        result = assess_capital_allocation(ticker.upper(), use_cache=True)
+        return result
+    except Exception as e:
+        logger.error(f"Error assessing capital allocation for {ticker}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to assess capital allocation: {str(e)}")
+
+
+@router.get("/{ticker}/financial-health")
+async def get_financial_health(ticker: str):
+    """
+    Get Financial Health assessment for a ticker.
+
+    Evaluates whether financial distress could destroy cumulative economic profit.
+    A Critical status with moat_override_flag=true forces a No-Moat rating
+    regardless of competitive advantages.
+
+    Args:
+        ticker: Stock ticker symbol
+
+    Returns:
+        Financial health status, value destruction risk, override flag, and components
+    """
+    try:
+        logger.info(f"Assessing financial health for {ticker}")
+        result = assess_financial_health(ticker.upper(), use_cache=True)
+        return result
+    except Exception as e:
+        logger.error(f"Error assessing financial health for {ticker}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to assess financial health: {str(e)}")
 
 
 @router.get("/{ticker}/resilience")

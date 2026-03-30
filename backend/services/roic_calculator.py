@@ -42,6 +42,296 @@ def _safe_float(value: str | float | None) -> float:
         return 0.0
 
 
+# ---------------------------------------------------------------------------
+# Morningstar-Style WACC Estimation (Building-Block Approach)
+# ---------------------------------------------------------------------------
+#
+# Morningstar does NOT use raw market beta or standard CAPM. Instead it uses
+# a qualitative building-block method:
+#
+#   COE = Real Market Return + Inflation Expectation +/- Systematic Risk Premium
+#   COD = Risk-Free Rate + Corporate Credit Spread (tax-adjusted)
+#   WACC = w_e * COE + w_d * COD
+#
+# Systematic risk is assigned as a discrete category inferred from business
+# and financial characteristics, not from price covariance.
+# Capital structure uses normalized long-run weights, not today's market cap.
+
+# Base assumptions (Morningstar global equity model)
+_REAL_MARKET_RETURN = 0.065       # 6.5% long-run real equity return
+_INFLATION_EXPECTATION = 0.025    # 2.5% expected inflation
+_BASE_NOMINAL_COE = _REAL_MARKET_RETURN + _INFLATION_EXPECTATION  # ~9.0%
+
+# Systematic risk adjustments applied to COE
+_SYSTEMATIC_RISK_PREMIUM = {
+    "Below Average": -0.015,   # stable, predictable businesses
+    "Average":        0.000,
+    "Above Average":  0.020,   # cyclical or operationally leveraged
+    "Very High":      0.045,   # highly volatile or unproven
+}
+
+# Credit-spread buckets for pre-tax cost of debt (added to risk-free rate)
+_CREDIT_SPREAD = {
+    "Low":      0.010,   # AAA/AA equivalent, strong balance sheet
+    "Moderate": 0.020,   # A/BBB, investment grade
+    "Elevated": 0.035,   # BB, moderate leverage
+    "High":     0.055,   # B or worse, significant leverage
+}
+
+
+def _classify_systematic_risk(df: "pd.DataFrame") -> str:
+    """
+    Infer a Morningstar-style systematic risk category from financials.
+
+    Uses revenue volatility, operating-income volatility, and leverage
+    as proxies for cyclicality, operating leverage, and financial risk.
+    """
+    if df.empty or len(df) < 4:
+        return "Average"
+
+    df_sorted = df.sort_values("year", ascending=True)
+
+    # Revenue volatility
+    revenues = df_sorted["revenue"].values
+    rev_growth = np.diff(revenues) / (np.abs(revenues[:-1]) + 1e-9)
+    rev_vol = float(np.std(rev_growth)) if len(rev_growth) >= 3 else 0.15
+
+    # Operating income volatility
+    oi = df_sorted["operating_income"].values
+    oi_growth = np.diff(oi) / (np.abs(oi[:-1]) + 1e-9)
+    oi_vol = float(np.std(oi_growth)) if len(oi_growth) >= 3 else 0.25
+
+    # Leverage (D/E)
+    latest = df_sorted.iloc[-1]
+    equity = float(latest.get("equity", 0))
+    total_debt = float(latest.get("total_debt", 0))
+    de_ratio = total_debt / equity if equity > 0 else 3.0
+
+    # Scoring: each factor contributes 0-3 points
+    score = 0
+
+    # Revenue cyclicality
+    if rev_vol < 0.08:
+        score += 0
+    elif rev_vol < 0.15:
+        score += 1
+    elif rev_vol < 0.30:
+        score += 2
+    else:
+        score += 3
+
+    # Operating leverage / earnings volatility
+    if oi_vol < 0.15:
+        score += 0
+    elif oi_vol < 0.30:
+        score += 1
+    elif oi_vol < 0.50:
+        score += 2
+    else:
+        score += 3
+
+    # Financial leverage
+    if de_ratio < 0.3:
+        score += 0
+    elif de_ratio < 0.8:
+        score += 1
+    elif de_ratio < 1.5:
+        score += 2
+    else:
+        score += 3
+
+    # Map aggregate score to Morningstar category (max possible = 9)
+    if score <= 2:
+        return "Below Average"
+    elif score <= 4:
+        return "Average"
+    elif score <= 6:
+        return "Above Average"
+    else:
+        return "Very High"
+
+
+def _classify_credit_risk(df: "pd.DataFrame") -> str:
+    """
+    Infer a credit-risk bucket from interest coverage and leverage.
+
+    Approximates the credit-spread category Morningstar would layer
+    onto the risk-free rate for cost of debt.
+    """
+    if df.empty:
+        return "Moderate"
+
+    latest = df.sort_values("year", ascending=False).iloc[0]
+    equity = float(latest.get("equity", 0))
+    total_debt = float(latest.get("total_debt", 0))
+    operating_income = float(latest.get("operating_income", 0))
+    interest_expense = abs(float(latest.get("interest_expense", 0))) if "interest_expense" in latest.index else 0.0
+
+    de_ratio = total_debt / equity if equity > 0 else 5.0
+    coverage = operating_income / interest_expense if interest_expense > 0 else 50.0
+
+    if coverage > 12 and de_ratio < 0.3:
+        return "Low"
+    elif coverage > 5 and de_ratio < 1.0:
+        return "Moderate"
+    elif coverage > 2 and de_ratio < 2.0:
+        return "Elevated"
+    else:
+        return "High"
+
+
+def _normalize_capital_weights(df: "pd.DataFrame") -> tuple[float, float]:
+    """
+    Derive normalized equity/debt weights from long-run balance-sheet structure.
+
+    Uses the median debt-to-total-capital ratio over available history
+    rather than today's market cap, which avoids distortion from price
+    momentum, bubbles, or temporary distress.
+    """
+    if df.empty or len(df) < 2:
+        return 0.80, 0.20
+
+    equity_vals = df["equity"].values
+    debt_vals = df["total_debt"].values
+    total_capital = equity_vals + debt_vals
+
+    valid = total_capital > 0
+    if not valid.any():
+        return 0.80, 0.20
+
+    debt_fractions = debt_vals[valid] / total_capital[valid]
+    median_debt_frac = float(np.median(debt_fractions))
+    median_debt_frac = max(0.0, min(median_debt_frac, 0.70))
+
+    w_d = median_debt_frac
+    w_e = 1.0 - w_d
+    return round(w_e, 4), round(w_d, 4)
+
+
+def estimate_wacc(ticker: str, use_cache: bool = True) -> float:
+    """
+    Estimate company-specific WACC using a Morningstar-style building-block
+    approach.
+
+    Cost of Equity:
+      COE = base_nominal_return (9.0%) +/- systematic_risk_premium
+      Systematic risk is classified from revenue volatility, operating
+      leverage, and financial leverage -- not from market beta.
+
+    Cost of Debt:
+      COD = (risk_free_rate + credit_spread) * (1 - tax_rate)
+      Credit spread is assigned from interest coverage and D/E ratio.
+
+    Weights:
+      Normalized from median historical debt/total-capital, not today's
+      market cap.
+
+    Falls back to DEFAULT_WACC when data is insufficient.
+    """
+    try:
+        fundamental_data = get_fundamental_data(ticker, use_cache=use_cache)
+        df_financials = extract_annual_financials(fundamental_data)
+
+        if df_financials.empty:
+            logger.warning(f"No financials for WACC estimation of {ticker}, using default")
+            return DEFAULT_WACC
+
+        # --- Cost of Equity ---
+        risk_category = _classify_systematic_risk(df_financials)
+        coe = _BASE_NOMINAL_COE + _SYSTEMATIC_RISK_PREMIUM[risk_category]
+
+        # --- Cost of Debt ---
+        credit_category = _classify_credit_risk(df_financials)
+        # Morningstar COD = inflation + base spread + credit spread, tax-adjusted
+        pretax_cod = _INFLATION_EXPECTATION + 0.02 + _CREDIT_SPREAD[credit_category]
+        latest = df_financials.sort_values("year", ascending=False).iloc[0]
+        tax_rate = float(latest.get("tax_rate", 0.21))
+        cod = pretax_cod * (1 - tax_rate)
+
+        # --- Capital Structure ---
+        w_e, w_d = _normalize_capital_weights(df_financials)
+
+        wacc = w_e * coe + w_d * cod
+
+        logger.info(
+            f"WACC for {ticker}: {wacc:.4f} "
+            f"(COE={coe:.4f} [{risk_category}], "
+            f"COD={cod:.4f} [{credit_category}], "
+            f"w_e={w_e:.2f}, w_d={w_d:.2f})"
+        )
+        return round(wacc, 4)
+
+    except Exception as e:
+        logger.warning(f"WACC estimation failed for {ticker}: {e}, using default")
+        return DEFAULT_WACC
+
+
+def estimate_wacc_detailed(ticker: str, use_cache: bool = True) -> dict:
+    """
+    Return full WACC breakdown for transparency and teaching.
+
+    Same logic as estimate_wacc() but returns the intermediate
+    classifications and assumptions so the tutor can explain *why*
+    a particular WACC was chosen.
+    """
+    result = {
+        "ticker": ticker.upper(),
+        "wacc": DEFAULT_WACC,
+        "methodology": "Morningstar-style building-block",
+        "assumptions": {
+            "real_market_return_pct": _REAL_MARKET_RETURN * 100,
+            "inflation_expectation_pct": _INFLATION_EXPECTATION * 100,
+            "base_nominal_coe_pct": _BASE_NOMINAL_COE * 100,
+        },
+    }
+    try:
+        fundamental_data = get_fundamental_data(ticker, use_cache=use_cache)
+        df_financials = extract_annual_financials(fundamental_data)
+
+        if df_financials.empty:
+            result["error"] = "Insufficient financial data"
+            return result
+
+        risk_category = _classify_systematic_risk(df_financials)
+        coe = _BASE_NOMINAL_COE + _SYSTEMATIC_RISK_PREMIUM[risk_category]
+
+        credit_category = _classify_credit_risk(df_financials)
+        pretax_cod = _INFLATION_EXPECTATION + 0.02 + _CREDIT_SPREAD[credit_category]
+        latest = df_financials.sort_values("year", ascending=False).iloc[0]
+        tax_rate = float(latest.get("tax_rate", 0.21))
+        cod = pretax_cod * (1 - tax_rate)
+
+        w_e, w_d = _normalize_capital_weights(df_financials)
+        wacc = w_e * coe + w_d * cod
+
+        result.update({
+            "wacc": round(wacc, 4),
+            "wacc_pct": round(wacc * 100, 2),
+            "cost_of_equity": {
+                "coe_pct": round(coe * 100, 2),
+                "systematic_risk_category": risk_category,
+                "risk_premium_pct": round(_SYSTEMATIC_RISK_PREMIUM[risk_category] * 100, 2),
+            },
+            "cost_of_debt": {
+                "pretax_cod_pct": round(pretax_cod * 100, 2),
+                "aftertax_cod_pct": round(cod * 100, 2),
+                "credit_risk_category": credit_category,
+                "credit_spread_pct": round(_CREDIT_SPREAD[credit_category] * 100, 2),
+                "tax_rate_pct": round(tax_rate * 100, 2),
+            },
+            "capital_structure": {
+                "equity_weight_pct": round(w_e * 100, 2),
+                "debt_weight_pct": round(w_d * 100, 2),
+                "source": "normalized median historical D/(D+E)",
+            },
+        })
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
+
+
 def calculate_nopat(operating_income: float, tax_rate: float) -> float:
     """
     Calculate NOPAT (Net Operating Profit After Tax).
@@ -277,6 +567,7 @@ def extract_annual_financials(fundamental_data: dict) -> pd.DataFrame:
             "equity": data.get("equity", 0),
             "cash": data.get("cash", 0),
             "total_debt": total_debt,
+            "interest_expense": data.get("interest_expense", 0),
             "tax_rate": tax_rate,
         })
     

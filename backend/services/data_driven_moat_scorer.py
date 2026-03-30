@@ -100,7 +100,7 @@ class DataDrivenMoatScorer:
                 "switching_costs": self._score_switching_costs(price_metrics, news_metrics),
                 "intangible_assets": self._score_intangible_assets(price_metrics, news_metrics, roic_data),
                 "cost_advantages": self._score_cost_advantages(price_metrics, news_metrics, roic_data),
-                "regulatory_barriers": self._score_regulatory_barriers(price_metrics, news_metrics),
+                "efficient_scale": self._score_efficient_scale(price_metrics, news_metrics),
             }
             
             # Add financial performance factor if ROIC available
@@ -380,14 +380,14 @@ class DataDrivenMoatScorer:
         
         return min(5.0, max(1.0, round(score, 1)))
     
-    def _score_regulatory_barriers(self, price: dict, news: dict) -> float:
+    def _score_efficient_scale(self, price: dict, news: dict) -> float:
         """
-        Score regulatory barriers based on stability and predictability.
+        Score efficient scale based on market size constraints and natural oligopoly indicators.
         
-        Regulatory moats show:
-        - Low volatility (stable regulated environment)
-        - Shallow drawdowns (protected from competition)
-        - Consistent returns (predictable cash flows)
+        Efficient scale moats show:
+        - Low volatility (stable market with limited competitors)
+        - Shallow drawdowns (protected from new entrants)
+        - Consistent returns (predictable cash flows in constrained market)
         """
         score = 2.5
         
@@ -571,7 +571,7 @@ class DataDrivenMoatScorer:
         - Revenue growth consistency -> Network Effects
         - ROIC consistency + low volatility -> Cost Advantages
         - Revenue stability (low volatility) -> Switching Costs
-        - Market concentration indicators -> Efficient Scale / Regulatory Barriers
+        - Market concentration indicators -> Efficient Scale
         
         Args:
             ticker: Stock ticker symbol
@@ -697,35 +697,35 @@ class DataDrivenMoatScorer:
                         "metric": f"Avg ROIC: {avg_roic_pct:.1f}%",
                     }
                 
-                # === 5. Ecosystem / Platform Lock-in ===
-                # High ROIC + stable/strengthening trend + low revenue volatility
+                # === 5. Efficient Scale ===
+                # High ROIC + stable trend + low revenue volatility suggests
+                # market only supports limited competitors profitably
                 if (
                     avg_roic_pct > 20 
                     and roic_trend in ["strengthening", "stable"]
                     and "switching_costs" in sources
                 ):
-                    sources["ecosystem_lockin"] = {
+                    sources["efficient_scale"] = {
                         "strength": "Strong" if avg_roic_pct > 30 else "Moderate",
                         "evidence": (
                             f"Combination of high ROIC ({avg_roic_pct:.1f}%), {roic_trend} trend, "
-                            f"and revenue stability indicates deep ecosystem or platform lock-in."
+                            f"and revenue stability suggests limited market size supports only a few profitable competitors."
                         ),
                         "metric": f"ROIC: {avg_roic_pct:.1f}%, Trend: {roic_trend}",
                     }
             
-            # === 6. Regulatory Barriers (heuristic) ===
+            # === 6. Efficient Scale (heuristic fallback) ===
             # Low volatility + consistent returns in capital-intensive industries
-            # This is a weaker signal since we don't have industry classification
             if len(revenues) >= 5:
                 rev_growth = np.diff(revenues) / (np.abs(revenues[:-1]) + 1e-9)
                 rev_vol = float(np.std(rev_growth))
                 if rev_vol < 0.10 and avg_op_margin > 0.15:
-                    if "regulatory_barriers" not in sources:
-                        sources["regulatory_barriers"] = {
+                    if "efficient_scale" not in sources:
+                        sources["efficient_scale"] = {
                             "strength": "Potential",
                             "evidence": (
                                 f"Very stable revenue ({rev_vol*100:.1f}% volatility) with decent margins "
-                                f"may indicate regulatory barriers or protected market position."
+                                f"may indicate efficient scale where limited market size deters new entrants."
                             ),
                             "metric": f"Revenue volatility: {rev_vol*100:.1f}%",
                         }
@@ -779,7 +779,7 @@ class DataDrivenMoatScorer:
                 "switching_costs": 3.0,
                 "intangible_assets": 3.0,
                 "cost_advantages": 3.0,
-                "regulatory_barriers": 3.0,
+                "efficient_scale": 3.0,
             },
             "trend": "stable",
             "summary": f"{ticker} analysis limited by insufficient historical data. Default neutral scores applied pending more comprehensive data coverage.",

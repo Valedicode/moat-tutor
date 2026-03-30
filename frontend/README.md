@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Frontend (Next.js)
 
-## Getting Started
+MoatTutor frontend is a Next.js app that visualizes and explains economic moat analysis from the backend API.
 
-First, run the development server:
+It includes:
+
+- Chat + tutoring interactions
+- Overall moat views and radar charts
+- Time-window moat analysis views
+- Fundamentals-driven outputs (ROIC/WACC, valuation, uncertainty, capital allocation, financial health)
+
+## Quick Start
+
+From `frontend/`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app runs at `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Backend Dependency
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The frontend expects the backend API to be running.
 
-## Learn More
+Start backend from `backend/`:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+uvicorn main:app --reload --port 8000
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Backend docs: `http://localhost:8000/docs`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Environment Variables
 
-## Deploy on Vercel
+Set this in a frontend `.env.local` file if your backend is not on default localhost:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Notes:
+
+- Most frontend API calls use same-origin paths (`/api/v1/...`) and rely on your dev setup/proxy.
+- Streaming chat explicitly uses `NEXT_PUBLIC_BACKEND_URL` in `src/lib/moatTutorApi.ts`.
+
+## Key Files
+
+- `src/lib/moatTutorApi.ts`
+  - Shared frontend API client/types
+  - Moat assessment types (5-source taxonomy with `efficient_scale`)
+  - Endpoints for moat, fundamentals, and chat flows
+
+- `src/components/studio/views/OverallMoatView.tsx`
+  - Overall moat score UI
+  - Radar mapping to 5 factors
+
+- `src/components/charts/MoatRadar.tsx`
+  - Radar visualization for moat dimensions
+
+## Scripts
+
+```bash
+pnpm dev     # start dev server
+pnpm build   # production build
+pnpm start   # serve production build
+pnpm lint    # run eslint
+```
+
+## Troubleshooting
+
+- If requests fail, verify backend is running on port `8000`.
+- If streaming fails, check `NEXT_PUBLIC_BACKEND_URL`.
+- If factor fields mismatch, ensure backend and frontend are both on the updated 5-source moat schema.

@@ -97,15 +97,14 @@ class MoatAssessment(BaseModel):
     Complete moat assessment from agent analysis.
     
     Based on analysis of price development and financial news, this provides
-    quantified moat scores across six dimensions plus an overall rating.
+    quantified moat scores across five dimensions plus an overall rating.
     """
     # Dimension scores
     switching_costs: MoatDimensionScore = Field(..., description="Cost/difficulty for customers to switch to competitors")
     network_effects: MoatDimensionScore = Field(..., description="Value increases as more users join the platform")
     intangible_assets: MoatDimensionScore = Field(..., description="Brand, patents, proprietary data, regulatory advantages")
     cost_advantages: MoatDimensionScore = Field(..., description="Ability to produce goods/services cheaper due to scale or unique resources")
-    regulatory_barriers: MoatDimensionScore = Field(..., description="Regulatory protection or approval requirements")
-    ecosystem_lockin: MoatDimensionScore = Field(..., description="Integration complexity or proprietary standards")
+    efficient_scale: MoatDimensionScore = Field(..., description="Market only supports limited competitors profitably due to natural size constraints")
     
     # Overall assessment
     overall_score: float = Field(..., ge=0, le=5, description="Average of dimension scores")
@@ -140,17 +139,11 @@ class MoatAssessment(BaseModel):
                     "confidence": "Medium",
                     "rationale": "Scale advantages in R&D maintained but competition increasing."
                 },
-                "regulatory_barriers": {
-                    "score": 2.0,
-                    "direction": "Weakening",
+                "efficient_scale": {
+                    "score": 2.5,
+                    "direction": "Stable",
                     "confidence": "Medium",
-                    "rationale": "Export restrictions create uncertainty but not protective barriers."
-                },
-                "ecosystem_lockin": {
-                    "score": 4.8,
-                    "direction": "Strengthening",
-                    "confidence": "High",
-                    "rationale": "CUDA ecosystem lock-in deepens as AI workloads become more complex."
+                    "rationale": "Market size limits the number of viable competitors in high-end GPU design, but efficient scale is not the primary moat driver."
                 },
                 "overall_score": 4.0,
                 "overall_rating": "Wide",

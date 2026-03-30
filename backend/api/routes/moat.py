@@ -18,6 +18,7 @@ import logging
 
 from agent.moat_tutor import invoke_agent_windowed
 from services.parser import AgentResponseParser
+from services.financial_health import assess_financial_health
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,7 @@ def _compute_moat_score(ticker: str) -> dict:
                 "switching_costs": assessment.switching_costs.score,
                 "intangible_assets": assessment.intangible_assets.score,
                 "cost_advantages": assessment.cost_advantages.score,
-                "regulatory_barriers": assessment.regulatory_barriers.score,
+                "efficient_scale": assessment.efficient_scale.score,
             },
             "trend": assessment.network_effects.direction.lower() if assessment.network_effects.direction else "stable",
             "summary": parsed.summary or f"Comprehensive moat analysis for {ticker} covering {MOAT_START} to {MOAT_END}.",
@@ -146,7 +147,7 @@ def _compute_moat_score(ticker: str) -> dict:
             assessment.switching_costs.direction,
             assessment.intangible_assets.direction,
             assessment.cost_advantages.direction,
-            assessment.ecosystem_lockin.direction,
+            assessment.efficient_scale.direction,
         ]
         strengthening_count = sum(1 for d in directions if d == "Strengthening")
         weakening_count = sum(1 for d in directions if d == "Weakening")
@@ -158,6 +159,22 @@ def _compute_moat_score(ticker: str) -> dict:
         else:
             score_data["trend"] = "stable"
         
+        # Financial health override: if severe distress, force No Moat
+        try:
+            fh = assess_financial_health(ticker)
+            score_data["financial_health_status"] = fh.get("financial_health_status", "Watch")
+            if fh.get("moat_override_flag"):
+                score_data["rating"] = "None"
+                score_data["overall_score"] = min(score_data["overall_score"], 2.0)
+                score_data["summary"] += (
+                    f" [OVERRIDE] Financial health is Critical "
+                    f"(value destruction risk {fh['value_destruction_risk']:.0%}), "
+                    f"forcing No-Moat rating regardless of competitive advantages."
+                )
+                logger.warning(f"Financial health override applied for {ticker}: forced No Moat")
+        except Exception as fh_err:
+            logger.warning(f"Financial health check failed for {ticker}: {fh_err}")
+
         logger.info(
             f"Computed comprehensive moat score for {ticker}: "
             f"{score_data['overall_score']:.2f} ({score_data['rating']}) "
@@ -178,7 +195,7 @@ def _compute_moat_score(ticker: str) -> dict:
                 "switching_costs": 3.0,
                 "intangible_assets": 3.0,
                 "cost_advantages": 3.0,
-                "regulatory_barriers": 3.0,
+                "efficient_scale": 3.0,
             },
             "trend": "stable",
             "summary": f"Unable to compute moat score for {ticker} due to error: {str(e)}",
