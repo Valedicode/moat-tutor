@@ -1,155 +1,141 @@
-## Backend (FastAPI + LangChain Tutoring Agent)
+## Backend (FastAPI + LangChain Moat Tutor)
 
-MoatTutor is a **teaching financial agent** that explains stock behavior while actively tutoring users in financial concepts.
+MoatTutor backend provides a Morningstar-aligned tutoring workflow for economic moat analysis:
+
+- Economic moat sources (official 5): Network Effects, Switching Costs, Intangible Assets, Cost Advantages, Efficient Scale
+- ROIC vs WACC analysis with fade-period logic
+- Capital Allocation rating (Exemplary / Standard / Poor)
+- Financial Health assessment with deterministic No-Moat override
+- 3-stage DCF fair value (Explicit -> Fade -> Perpetuity)
+- Uncertainty-adjusted star rating cutoffs
 
 ### Quick Start
 
 ```bash
-# 1. Install dependencies
+# 1) Install dependencies
 pip install -r requirements.txt
 
-# 2. Create .env file with your OpenAI key and Alpha Vantage key
+# 2) Create .env
 echo "LLM_PROVIDER=openai" > .env
 echo "OPENAI_API_KEY=your_key_here" >> .env
 echo "ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key" >> .env
 
-# 3. Test the agent
-python interactive_tutorial.py
-
-# 4. Run the API server
-uvicorn main:app --reload
+# 3) Run API (port 8000)
+uvicorn main:app --reload --port 8000
 ```
 
-**For detailed setup instructions**, see [`tutorial/SETUP.md`](tutorial/SETUP.md)
+Then open `http://127.0.0.1:8000/docs`.
 
-### What's Built
+For detailed setup, see `tutorial/SETUP.md`.
 
-- **MoatTutor Agent** (`agent/moat_tutor.py`)
-  - Teaching-first system prompt with 9-section response structure
-  - MOAT framework education (5 characteristics)
-  - Adaptive learning based on user expertise
-  - Interactive features: comprehension checks, learning paths, concept definitions
-  - 5 tools: news (with semantic search), prices, time series, moat characteristics, topic search
-  - Support for OpenAI and local LLMs
+## Core Modules
 
-- **Historical News Pipeline** (`services/fnspid_news_pipeline.py`)
-  - Streams 45M+ rows from Hugging Face FNSPID dataset
-  - Filters and deduplicates 142K+ news passages (2015-2023)
-  - Generates OpenAI embeddings for semantic search
-  - Supports 9 tickers: AAPL, NVDA, MSFT, AMD, GOOGL, AVGO, ORCL, CSCO, MU
-  - Local storage: ~63 MB compressed
+- `services/roic_calculator.py`
+  - ROIC/NOPAT/Invested Capital series
+  - Morningstar-style WACC building-block estimator
+  - WACC detail breakdown endpoint support
+  - Fade-period estimation for moat durability
 
-- **Alpha Vantage News Provider** (`services/alpha_vantage_provider.py`)
-  - Fills 2024-2025 news gap using Alpha Vantage NEWS_SENTIMENT API
-  - Disk caching (7-day validity for historical news)
-  - Extracts topics for better filtering
-  - Free tier: 5 req/min, 500 req/day
-  - Get free API key: https://www.alphavantage.co/support/#api-key
+- `services/capital_allocation.py`
+  - Three-pillar capital allocation scoring:
+    - Balance Sheet Management
+    - Investment Strategy (ROIC vs WACC)
+    - Shareholder Distributions
+  - Rating output: `Exemplary | Standard | Poor`
 
-- **Semantic News Retrieval** (`services/fnspid_retrieval.py`)
-  - Embedding-based similarity search
-  - Date range filtering
-  - Returns top-k most relevant passages
-  - Integrated with agent tools
+- `services/financial_health.py`
+  - Three-component financial health scoring:
+    - Leverage
+    - Liquidity
+    - Cash Flow Sufficiency
+  - Status output: `Healthy | Watch | Distressed | Critical`
+  - `moat_override_flag` for deterministic No-Moat override
 
-- **FastAPI Integration** (`main.py`)
-  - `/chat` endpoint for natural language interaction
-  - `/chat/stream` for streaming responses
-  - `/charts/{ticker}` for price data
-  - CORS enabled for frontend
+- `services/valuation_estimator.py`
+  - 3-stage DCF fair value:
+    - Stage I explicit forecast (years 1-5)
+    - Stage II fade period (linked to moat durability)
+    - Stage III perpetuity (Gordon Growth)
+  - Equity bridge: EV -> Equity Value -> Fair Value/Share
+  - Uncertainty rating + uncertainty-adjusted star rating bands
 
-- **Pedagogical Features** (see `tutorial/TUTORING_FEATURES.md`)
-  - Concept definitions for every term used
-  - 6 structured learning paths (Beginner, Analyst, Event-Chain, etc.)
-  - Comprehension checks after every response
-  - Active learning suggestions
-  - Data transparency and honest limitations
+- `services/data_driven_moat_scorer.py`
+  - Quantitative moat source scoring aligned to official 5-source taxonomy
 
-### Historical News Data Setup
+- `services/moat_news_classifier.py`
+  - Moat-source classification from historical news passages
+  - Query bank aligned to official 5-source taxonomy
 
-The backend includes a powerful historical news pipeline using the FNSPID dataset:
+- `agent/moat_tutor.py`
+  - Teaching-oriented agent prompt and tool orchestration
+  - Includes tools for ROIC, valuation, uncertainty, WACC breakdown,
+    capital allocation, financial health, moat-news classification, and resilience
 
-#### Check Data Status
+## API Surface (Key Endpoints)
+
+### Fundamentals
+
+- `GET /api/v1/fundamentals/{ticker}/roic`
+- `GET /api/v1/fundamentals/{ticker}/compare`
+- `GET /api/v1/fundamentals/{ticker}/wacc`
+- `GET /api/v1/fundamentals/{ticker}/summary`
+- `GET /api/v1/fundamentals/{ticker}/valuation`
+- `GET /api/v1/fundamentals/{ticker}/uncertainty`
+- `GET /api/v1/fundamentals/{ticker}/capital-allocation`
+- `GET /api/v1/fundamentals/{ticker}/financial-health`
+- `GET /api/v1/fundamentals/{ticker}/moat-comparison`
+- `GET /api/v1/fundamentals/{ticker}/resilience`
+- `GET /api/v1/fundamentals/{ticker}/resilience-comparison`
+- `GET /api/v1/fundamentals/{ticker}/moat-news`
+- `GET /api/v1/fundamentals/{ticker}/milestones`
+
+### Moat
+
+- `GET /api/v1/moat/overall`
+  - Runs full-window moat assessment and applies financial-health override logic.
+
+### Chat
+
+- `POST /api/v1/chat`
+- `POST /api/v1/chat/stream`
+
+## Historical News Data
+
+The backend supports historical moat-news analysis using FNSPID + embeddings.
+
+### Check status
 
 ```bash
 python check_fnspid_data.py
 ```
 
-#### Generate Embeddings (Optional)
-
-**Note:** Embeddings may already be included. Only run this if you need to regenerate or add new tickers.
+### Generate/update embeddings (optional)
 
 ```bash
-# Generate for specific tickers (~$1-2 per ticker via OpenAI API)
 python -m services.fnspid_news_pipeline --tickers AAPL NVDA MSFT
-
-# Generate for all supported tickers
 python -m services.fnspid_news_pipeline
-
-# Options:
-# --max-rows N         # Limit rows for testing
-# --no-embeddings      # Skip embedding generation
 ```
 
-**Data Coverage:**
-- ✅ AAPL: 30,655 passages (14.72 MB)
-- ✅ NVDA: 22,122 passages (9.84 MB)
-- ✅ MSFT: 20,708 passages (10.19 MB)
-- ✅ AMD: 29,380 passages (13.87 MB)
-- ✅ GOOGL: 1,632 passages (0.16 MB)
-- ✅ AVGO: 3,824 passages (0.32 MB)
-- ✅ ORCL: 13,622 passages (5.73 MB)
-- ✅ CSCO: 1,443 passages (0.12 MB)
-- ✅ MU: 18,901 passages (7.75 MB)
-- ⚠️ PLTR: No historical data (IPO 2020)
+Optional flags:
 
-**Total:** 142,287 passages, 62.71 MB
+- `--max-rows N`
+- `--no-embeddings`
 
-### Alpha Vantage Setup (2024-2025 News Gap)
+## Alpha Vantage Setup
 
-The backend uses Alpha Vantage to fill the news gap for 2024-2025:
-
-1. **Get your free API key** at https://www.alphavantage.co/support/#api-key
-2. **Add to `.env` file:**
-   ```bash
-   ALPHA_VANTAGE_API_KEY=your_key_here
-   ALPHA_VANTAGE_BASE_URL=https://www.alphavantage.co/query
-   ```
-
-3. **Test the integration:**
-   ```bash
-   python test_alpha_vantage_integration.py
-   ```
-
-**Data Coverage:**
-- 2015-2023: FNSPID dataset (semantic search with embeddings)
-- 2024-2025: Alpha Vantage NEWS_SENTIMENT (with topics)
-- Recent (~30 days): yfinance (fallback)
-
-**Free Tier Limits:**
-- 5 API calls per minute
-- 500 API calls per day
-- Cache is valid for 7 days (historical news doesn't change)
-
-### Test the API
+Add to `.env`:
 
 ```bash
-# General analysis (chronological summary)
-curl -X POST "http://127.0.0.1:8000/api/v1/chat" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Explain why AAPL moved from 2023-01-01 to 2023-06-30"}'
-
-# Semantic search (topic-specific)
-curl -X POST "http://127.0.0.1:8000/api/v1/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "Find news about NVDA AI chip demand",
-    "ticker": "NVDA",
-    "start_date": "2023-01-01",
-    "end_date": "2023-12-31"
-  }'
+ALPHA_VANTAGE_API_KEY=your_key_here
+ALPHA_VANTAGE_BASE_URL=https://www.alphavantage.co/query
 ```
 
-Or visit: `http://127.0.0.1:8000/docs`
+Used for fundamentals and additional news coverage where applicable.
+
+## Notes on Methodology
+
+- WACC is implemented as a Morningstar-style building-block approximation for tutoring consistency (not raw beta CAPM).
+- Financial health override is applied post-analysis for deterministic behavior.
+- Star ratings use uncertainty-adjusted bands (higher uncertainty requires deeper discount for same star level).
 
 

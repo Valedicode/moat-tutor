@@ -2,8 +2,15 @@
 
 ### Overview
 
-MoatTutor is an LLM-powered agent that explains the historical behavior of **MOAT-style technology stocks** in clear, non-technical language.  
+MoatTutor is an LLM-powered agent that explains the historical behavior of **MOAT-style technology stocks** in clear, non-technical language.
 Instead of predicting prices, it focuses on **explainability**: connecting financial news, fundamentals, and price movements to long-term **economic moats** (durable competitive advantages such as network effects or switching costs).
+
+The current backend also includes a Morningstar-aligned research flow for tutoring:
+- ROIC vs WACC moat test with building-block WACC assumptions
+- Capital Allocation rating (Exemplary / Standard / Poor)
+- Financial Health status with deterministic No-Moat override
+- 3-stage DCF fair value (Explicit -> Fade -> Perpetuity)
+- Uncertainty-adjusted star-rating cutoffs
 
 The goal is to help non-finance users understand why a stock might have moved the way it did, using plain-language narratives grounded in real data.
 
@@ -14,6 +21,7 @@ The goal is to help non-finance users understand why a stock might have moved th
 - **Plain-language explanations** of key concepts like switching costs, network effects, and intangible assets.
 - **Narratives linking events to price moves**, e.g., how specific news or fundamental changes relate to later rallies or drawdowns.
 - **Integration of multiple data types**: financial news (text) plus historical price time series (OHLC + volume).
+- **Morningstar-style tutoring workflow**: moat assessment, valuation, uncertainty, and risk overlays.
 
 ---
 
@@ -71,6 +79,10 @@ The goal is to help non-finance users understand why a stock might have moved th
   - Typically covers last 30 days
   - Used for queries after 2023
 
+- **Alpha Vantage Fundamentals / Supplemental News**
+  - Fundamental statements used for ROIC, WACC, capital allocation, financial health, and valuation
+  - Supplemental coverage for recent periods where needed
+
 - **Time series data**
   - OHLCV price histories for selected MOAT-style technology stocks
   - Simple derived metrics (returns, volatility, event-window moves, etc.)
@@ -98,6 +110,8 @@ cd moat-tutor
 cd backend
 pip install -r requirements.txt
 ```
+
+For complete backend capabilities and API endpoints, see `backend/README.md`.
 
 Create a `.env` file in the `backend/` directory:
 
