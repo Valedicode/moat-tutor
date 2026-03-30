@@ -159,39 +159,11 @@ async def get_quick_summary(ticker: str) -> dict:
     Raises:
         HTTPException: If ticker not found
     """
-    try:
-        # Use the same moat data as the companies endpoint
-        from api.routes.companies import MOAT_DB
-        
-        ticker_upper = ticker.upper()
-        
-        if ticker_upper not in MOAT_DB:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Moat data not available for ticker '{ticker}'"
-            )
-        
-        moat_data = MOAT_DB[ticker_upper]
-        
-        # Create a summary string from the moat characteristics
-        characteristics_summary = ", ".join([
-            f"{char.name} ({char.strength})"
-            for char in moat_data.characteristics
-        ])
-        
-        return {
-            "ticker": ticker_upper,
-            "moat_summary": f"{moat_data.overall_moat_rating} moat: {characteristics_summary}",
-            "overall_rating": moat_data.overall_moat_rating,
-            "characteristics_count": len(moat_data.characteristics),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching moat summary: {str(e)}"
-        )
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "Quick moat summary is not available: static mock moat data was removed. "
+            "Use the live analysis pipeline (e.g. POST /api/v1/analyze) instead."
+        ),
+    )
 

@@ -11,7 +11,7 @@ from .responses import (
     MoatAnalysis,
 )
 from .requests import AnalyzeRequest
-from .company import Company, CompanyMoat
+from .company import Company
 
 __all__ = [
     # Chat models
@@ -29,6 +29,5 @@ __all__ = [
     "AnalyzeRequest",
     # Company models
     "Company",
-    "CompanyMoat",
 ]
 
