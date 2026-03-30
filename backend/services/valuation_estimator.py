@@ -32,13 +32,22 @@ logger = logging.getLogger(__name__)
 # Terminal growth rate assumption (long-run GDP growth)
 TERMINAL_GROWTH_RATE = 0.03  # 3%
 
-# Star rating thresholds based on Price / Fair Value ratio
+# Uncertainty-adjusted star-rating bands (Price/FV cutoffs by uncertainty level)
+STAR_BANDS = {
+    "Low":       {5: 0.80, 4: 0.90, 3: 1.10, 2: 1.25},
+    "Medium":    {5: 0.70, 4: 0.80, 3: 1.20, 2: 1.35},
+    "High":      {5: 0.60, 4: 0.75, 3: 1.25, 2: 1.45},
+    "Very High": {5: 0.50, 4: 0.65, 3: 1.35, 2: 1.55},
+    "Extreme":   {5: 0.25, 4: 0.50, 3: 1.50, 2: 1.75},
+}
+
+# Legacy fixed thresholds used as fallback
 STAR_THRESHOLDS = {
-    5: 0.60,   # P/FV < 0.60 -> 5-star (deep discount)
-    4: 0.80,   # P/FV < 0.80 -> 4-star
-    3: 1.20,   # P/FV < 1.20 -> 3-star (fair value)
-    2: 1.40,   # P/FV < 1.40 -> 2-star
-    1: float("inf"),  # P/FV >= 1.40 -> 1-star (overvalued)
+    5: 0.60,
+    4: 0.80,
+    3: 1.20,
+    2: 1.40,
+    1: float("inf"),
 }
 
 # Uncertainty rating thresholds
@@ -333,147 +342,163 @@ def _get_shares_outstanding(ticker: str) -> Optional[float]:
         return None
 
 
+def _get_moat_fade_years(ticker: str, use_cache: bool = True) -> int:
+    """
+    Determine fade period length based on moat rating estimate.
+
+    Wide Moat -> 20 years, Narrow Moat -> 10 years, No Moat -> 5 years.
+    Uses ROIC hurdle as a proxy for moat strength.
+    """
+    try:
+        from services.roic_calculator import check_roic_hurdle as _roic_hurdle
+        roic = _roic_hurdle(ticker, years=10, use_cache=use_cache)
+        if "error" in roic:
+            return 10
+        fade_info = roic.get("fade_period", {})
+        est_fade = fade_info.get("estimated_fade_years", 10)
+        if est_fade >= 15:
+            return 20
+        elif est_fade >= 8:
+            return 10
+        else:
+            return 5
+    except Exception:
+        return 10
+
+
 def estimate_fair_value(
     ticker: str,
-    wacc: float = DEFAULT_WACC,
+    wacc: float | None = None,
     terminal_growth: float = TERMINAL_GROWTH_RATE,
-    projection_years: int = 10,
-    use_cache: bool = True
+    use_cache: bool = True,
 ) -> dict:
     """
-    Estimate fair (intrinsic) value using a simplified DCF model.
-    
-    Steps:
-    1. Calculate historical Free Cash Flow (FCF = Operating CF - CapEx)
-    2. Estimate FCF growth rate from historical data
-    3. Project future FCFs for `projection_years` years
-    4. Calculate terminal value using Gordon Growth Model
-    5. Discount all cash flows to present value at WACC
-    6. Divide by shares outstanding to get per-share fair value
-    7. Compare to current market price for P/FV ratio
-    
-    Args:
-        ticker: Stock ticker symbol
-        wacc: Discount rate (default: 10%)
-        terminal_growth: Long-term growth rate (default: 3%)
-        projection_years: Years to project FCF (default: 10)
-        use_cache: Whether to use cached fundamental data
-        
-    Returns:
-        Dict with fair_value_per_share, current_price, price_to_fair_value,
-        star_rating, discount_premium_pct, and detailed breakdown
+    Estimate fair (intrinsic) value using a Morningstar-style 3-stage DCF.
+
+    Stage I  (Explicit Forecast, years 1-5): full year-by-year FCF projection
+             at the estimated growth rate.
+    Stage II (Fade, years 6-N): RONIC fades linearly from current growth toward
+             terminal growth. Fade length is linked to moat rating.
+    Stage III (Perpetuity): Gordon Growth Model at terminal growth rate.
+
+    Equity bridge:
+      Enterprise Value = PV(Stage I) + PV(Stage II) + PV(Stage III) + Excess Cash
+      Equity Value = Enterprise Value - Total Debt - Preferred Stock
+      Fair Value Per Share = Equity Value / Shares Outstanding
+
+    Star rating uses uncertainty-adjusted cutoffs.
     """
-    logger.info(f"Estimating fair value for {ticker}")
-    
+    logger.info(f"Estimating fair value for {ticker} (3-stage DCF)")
+
     try:
-        # Get fundamental data
         fundamental_data = get_fundamental_data(ticker, use_cache=use_cache)
-        
-        # Extract FCF history
         fcf_history = _extract_fcf_history(fundamental_data)
-        
+
         if len(fcf_history) < 3:
-            return {
-                "ticker": ticker.upper(),
-                "error": "Insufficient cash flow data for DCF (need at least 3 years).",
-            }
-        
-        # Calculate FCF growth rate
+            return {"ticker": ticker.upper(), "error": "Insufficient cash flow data for DCF (need at least 3 years)."}
+
         fcfs = [h["fcf"] for h in fcf_history if h["fcf"] > 0]
-        
         if len(fcfs) < 2:
-            return {
-                "ticker": ticker.upper(),
-                "error": "Insufficient positive FCF years for DCF projection.",
-            }
-        
-        # Use geometric mean growth rate of positive FCF years
+            return {"ticker": ticker.upper(), "error": "Insufficient positive FCF years for DCF projection."}
+
         fcf_growth_rates = []
         for i in range(1, len(fcfs)):
             if fcfs[i - 1] > 0:
-                growth = (fcfs[i] / fcfs[i - 1]) - 1
-                fcf_growth_rates.append(growth)
-        
+                fcf_growth_rates.append((fcfs[i] / fcfs[i - 1]) - 1)
         if not fcf_growth_rates:
-            return {
-                "ticker": ticker.upper(),
-                "error": "Cannot calculate FCF growth rate.",
-            }
-        
-        # Cap growth rate to reasonable bounds
-        avg_growth = float(np.mean(fcf_growth_rates))
+            return {"ticker": ticker.upper(), "error": "Cannot calculate FCF growth rate."}
+
         median_growth = float(np.median(fcf_growth_rates))
-        
-        # Use median (more robust) but cap at 25% to avoid unrealistic projections
         estimated_growth = min(0.25, max(-0.05, median_growth))
-        
-        # Base FCF: average of last 2 years (smoother than single year)
+
         recent_fcfs = [h["fcf"] for h in fcf_history[-2:]]
         base_fcf = float(np.mean(recent_fcfs))
-        
         if base_fcf <= 0:
-            # Try last 3 years
             recent_fcfs = [h["fcf"] for h in fcf_history[-3:] if h["fcf"] > 0]
             if recent_fcfs:
                 base_fcf = float(np.mean(recent_fcfs))
             else:
-                return {
-                    "ticker": ticker.upper(),
-                    "error": "Recent FCF is negative -- DCF not applicable for companies not generating free cash flow.",
-                }
-        
-        # Project future FCFs
-        projected_fcfs = []
-        for year in range(1, projection_years + 1):
-            projected_fcf = base_fcf * ((1 + estimated_growth) ** year)
-            discounted = projected_fcf / ((1 + wacc) ** year)
-            projected_fcfs.append({
-                "year": year,
-                "projected_fcf": round(projected_fcf, 0),
-                "discounted_fcf": round(discounted, 0),
-            })
-        
-        # Terminal value (Gordon Growth Model)
-        terminal_fcf = base_fcf * ((1 + estimated_growth) ** projection_years) * (1 + terminal_growth)
-        terminal_value = terminal_fcf / (wacc - terminal_growth)
-        discounted_terminal = terminal_value / ((1 + wacc) ** projection_years)
-        
-        # Total enterprise value
-        sum_discounted_fcfs = sum(pf["discounted_fcf"] for pf in projected_fcfs)
-        enterprise_value = sum_discounted_fcfs + discounted_terminal
-        
-        # Get current price and shares outstanding
+                return {"ticker": ticker.upper(), "error": "Recent FCF is negative -- DCF not applicable."}
+
+        # Resolve WACC
+        if wacc is None:
+            try:
+                from services.roic_calculator import estimate_wacc as _est_wacc
+                wacc = _est_wacc(ticker, use_cache=use_cache)
+            except Exception:
+                wacc = DEFAULT_WACC
+
+        # Stage parameters
+        stage1_years = 5
+        fade_years = _get_moat_fade_years(ticker, use_cache=use_cache)
+        stage2_end = stage1_years + fade_years
+
+        # --- Stage I: Explicit Forecast ---
+        stage1_fcfs = []
+        for yr in range(1, stage1_years + 1):
+            proj = base_fcf * ((1 + estimated_growth) ** yr)
+            pv = proj / ((1 + wacc) ** yr)
+            stage1_fcfs.append({"year": yr, "projected_fcf": round(proj), "discounted_fcf": round(pv)})
+        pv_stage1 = sum(f["discounted_fcf"] for f in stage1_fcfs)
+
+        # --- Stage II: Fade Period ---
+        stage2_fcfs = []
+        last_fcf = base_fcf * ((1 + estimated_growth) ** stage1_years)
+        for i, yr in enumerate(range(stage1_years + 1, stage2_end + 1)):
+            fade_frac = (i + 1) / fade_years
+            growth_rate = estimated_growth + (terminal_growth - estimated_growth) * fade_frac
+            last_fcf = last_fcf * (1 + growth_rate)
+            pv = last_fcf / ((1 + wacc) ** yr)
+            stage2_fcfs.append({"year": yr, "projected_fcf": round(last_fcf), "discounted_fcf": round(pv)})
+        pv_stage2 = sum(f["discounted_fcf"] for f in stage2_fcfs)
+
+        # --- Stage III: Perpetuity ---
+        terminal_fcf = last_fcf * (1 + terminal_growth)
+        if wacc <= terminal_growth:
+            terminal_value = terminal_fcf * 20
+        else:
+            terminal_value = terminal_fcf / (wacc - terminal_growth)
+        pv_stage3 = terminal_value / ((1 + wacc) ** stage2_end)
+
+        # --- Equity Bridge ---
+        df = extract_annual_financials(fundamental_data)
+        excess_cash = 0.0
+        total_debt = 0.0
+        if not df.empty:
+            latest = df.sort_values("year", ascending=False).iloc[0]
+            cash = float(latest.get("cash", 0))
+            total_debt = float(latest.get("total_debt", 0))
+            excess_cash = max(0, cash - total_debt * 0.05)
+
+        enterprise_value = pv_stage1 + pv_stage2 + pv_stage3 + excess_cash
+        equity_value = enterprise_value - total_debt
+
         current_price = _get_current_price(ticker)
         shares_outstanding = _get_shares_outstanding(ticker)
-        
+
         if not shares_outstanding or shares_outstanding <= 0:
             return {
                 "ticker": ticker.upper(),
                 "error": "Could not retrieve shares outstanding.",
-                "enterprise_value": round(enterprise_value, 0),
+                "enterprise_value": round(enterprise_value),
             }
-        
-        # Fair value per share
-        fair_value_per_share = enterprise_value / shares_outstanding
-        
-        # Price / Fair Value ratio
+
+        fair_value_per_share = max(0.01, equity_value / shares_outstanding)
+
         if current_price and current_price > 0:
             price_to_fair_value = current_price / fair_value_per_share
             discount_premium_pct = (1 - price_to_fair_value) * 100
         else:
             price_to_fair_value = None
             discount_premium_pct = None
-        
-        # Star rating
-        star_rating = _calculate_star_rating(price_to_fair_value)
-        
-        # Get uncertainty for adjusted star rating
+
         uncertainty = calculate_uncertainty_rating(ticker, use_cache=use_cache)
+        uncertainty_rating = uncertainty.get("uncertainty_rating", "Medium")
         margin_of_safety = uncertainty.get("margin_of_safety_pct", 30) / 100
-        
-        # Adjusted fair value (with margin of safety)
         adjusted_fair_value = fair_value_per_share * (1 - margin_of_safety)
-        
+
+        star_rating = _calculate_star_rating(price_to_fair_value, uncertainty_rating)
+
         return {
             "ticker": ticker.upper(),
             "fair_value_per_share": round(fair_value_per_share, 2),
@@ -482,56 +507,55 @@ def estimate_fair_value(
             "price_to_fair_value": round(price_to_fair_value, 2) if price_to_fair_value else None,
             "discount_premium_pct": round(discount_premium_pct, 1) if discount_premium_pct is not None else None,
             "star_rating": star_rating,
-            "uncertainty_rating": uncertainty.get("uncertainty_rating"),
+            "uncertainty_rating": uncertainty_rating,
             "margin_of_safety_pct": uncertainty.get("margin_of_safety_pct"),
             "dcf_assumptions": {
                 "wacc_pct": round(wacc * 100, 2),
                 "fcf_growth_rate_pct": round(estimated_growth * 100, 2),
                 "terminal_growth_rate_pct": round(terminal_growth * 100, 2),
-                "projection_years": projection_years,
-                "base_fcf": round(base_fcf, 0),
+                "stage1_years": stage1_years,
+                "fade_years": fade_years,
+                "base_fcf": round(base_fcf),
             },
             "dcf_breakdown": {
-                "sum_discounted_fcfs": round(sum_discounted_fcfs, 0),
-                "discounted_terminal_value": round(discounted_terminal, 0),
-                "enterprise_value": round(enterprise_value, 0),
+                "pv_stage1_explicit": round(pv_stage1),
+                "pv_stage2_fade": round(pv_stage2),
+                "pv_stage3_perpetuity": round(pv_stage3),
+                "excess_cash": round(excess_cash),
+                "enterprise_value": round(enterprise_value),
+                "total_debt": round(total_debt),
+                "equity_value": round(equity_value),
                 "shares_outstanding": shares_outstanding,
             },
             "fcf_history": [
-                {
-                    "year": h["year"],
-                    "fcf": round(h["fcf"], 0),
-                    "revenue": round(h["revenue"], 0),
-                }
-                for h in fcf_history[-5:]  # Last 5 years
+                {"year": h["year"], "fcf": round(h["fcf"]), "revenue": round(h["revenue"])}
+                for h in fcf_history[-5:]
             ],
-            "projected_fcfs": projected_fcfs[:5],  # First 5 years of projection
+            "projected_fcfs": stage1_fcfs + stage2_fcfs[:5],
             "calculated_at": datetime.now().isoformat(),
         }
-        
+
     except Exception as e:
         logger.error(f"Error estimating fair value for {ticker}: {e}")
-        return {
-            "ticker": ticker.upper(),
-            "error": f"Failed to estimate fair value: {str(e)}",
-        }
+        return {"ticker": ticker.upper(), "error": f"Failed to estimate fair value: {str(e)}"}
 
 
-def _calculate_star_rating(price_to_fair_value: Optional[float]) -> int:
+def _calculate_star_rating(
+    price_to_fair_value: Optional[float],
+    uncertainty_rating: str = "Medium",
+) -> int:
     """
-    Calculate star rating from Price/Fair Value ratio.
-    
-    5-star: P/FV < 0.60 (deep value)
-    4-star: P/FV 0.60-0.80
-    3-star: P/FV 0.80-1.20 (fairly valued)
-    2-star: P/FV 1.20-1.40
-    1-star: P/FV > 1.40 (overvalued)
+    Calculate star rating from Price/Fair Value ratio using
+    uncertainty-adjusted bands.
+
+    Higher uncertainty requires a deeper discount to achieve
+    the same star rating, matching the official Morningstar process.
     """
     if price_to_fair_value is None:
-        return 3  # Default to fair value if no price
-    
-    for stars in sorted(STAR_THRESHOLDS.keys(), reverse=True):
-        if price_to_fair_value < STAR_THRESHOLDS[stars]:
+        return 3
+
+    band = STAR_BANDS.get(uncertainty_rating, STAR_BANDS["Medium"])
+    for stars in (5, 4, 3, 2):
+        if price_to_fair_value < band[stars]:
             return stars
-    
     return 1

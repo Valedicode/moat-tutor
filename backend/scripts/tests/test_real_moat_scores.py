@@ -28,7 +28,7 @@ def print_moat_score(ticker: str, score_data: dict):
     print(f"  Switching Costs:      {score_data['factors']['switching_costs']:.1f}")
     print(f"  Intangible Assets:    {score_data['factors']['intangible_assets']:.1f}")
     print(f"  Cost Advantages:      {score_data['factors']['cost_advantages']:.1f}")
-    print(f"  Regulatory Barriers:  {score_data['factors']['regulatory_barriers']:.1f}")
+    print(f"  Efficient Scale:      {score_data['factors']['efficient_scale']:.1f}")
     print(f"\nSummary:")
     print(f"  {score_data['summary']}")
     print(f"{'='*80}\n")
