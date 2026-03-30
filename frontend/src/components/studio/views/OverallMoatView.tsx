@@ -119,7 +119,7 @@ export function OverallMoatView({
     switchingCosts: moatScore.factors.switching_costs,
     intangibleAssets: moatScore.factors.intangible_assets,
     costAdvantages: moatScore.factors.cost_advantages,
-    efficientScale: moatScore.factors.regulatory_barriers,
+    efficientScale: moatScore.factors.efficient_scale,
   };
 
   return (

@@ -114,7 +114,7 @@ export function MoatDashboard({
     switchingCosts: moatAssessment.switching_costs.score,
     intangibleAssets: moatAssessment.intangible_assets.score,
     costAdvantages: moatAssessment.cost_advantages.score,
-    efficientScale: moatAssessment.regulatory_barriers.score, // Map regulatory_barriers to efficientScale for now
+    efficientScale: moatAssessment.efficient_scale.score,
   } : (ticker ? (MOCK_MOAT_SCORES[ticker] || DEFAULT_SCORES) : DEFAULT_SCORES);
 
   // Get company name from ticker

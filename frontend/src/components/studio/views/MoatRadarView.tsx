@@ -23,7 +23,7 @@ export function MoatRadarView({ moatAssessment }: MoatRadarViewProps) {
     switchingCosts: moatAssessment.switching_costs.score,
     intangibleAssets: moatAssessment.intangible_assets.score,
     costAdvantages: moatAssessment.cost_advantages.score,
-    efficientScale: moatAssessment.regulatory_barriers.score,
+    efficientScale: moatAssessment.efficient_scale.score,
   };
 
   return (

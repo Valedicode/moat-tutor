@@ -66,8 +66,7 @@ export function WindowedMoatDashboard({ ticker }: WindowedMoatDashboardProps) {
         "Network Effects": activeReport.parsed_analysis.moat_assessment.network_effects.score,
         "Intangible Assets": activeReport.parsed_analysis.moat_assessment.intangible_assets.score,
         "Cost Advantages": activeReport.parsed_analysis.moat_assessment.cost_advantages.score,
-        "Regulatory Barriers": activeReport.parsed_analysis.moat_assessment.regulatory_barriers.score,
-        "Ecosystem Lock-in": activeReport.parsed_analysis.moat_assessment.ecosystem_lockin.score,
+        "Efficient Scale": activeReport.parsed_analysis.moat_assessment.efficient_scale.score,
       }
     : null;
 

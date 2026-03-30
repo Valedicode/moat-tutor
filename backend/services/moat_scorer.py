@@ -24,8 +24,7 @@ def calculate_overall_score(assessment: MoatAssessment) -> float:
         assessment.network_effects.score,
         assessment.intangible_assets.score,
         assessment.cost_advantages.score,
-        assessment.regulatory_barriers.score,
-        assessment.ecosystem_lockin.score,
+        assessment.efficient_scale.score,
     ]
     return round(sum(scores) / len(scores), 2)
 
@@ -94,8 +93,7 @@ def validate_moat_assessment(assessment: MoatAssessment) -> Tuple[bool, str]:
         assessment.network_effects.score,
         assessment.intangible_assets.score,
         assessment.cost_advantages.score,
-        assessment.regulatory_barriers.score,
-        assessment.ecosystem_lockin.score,
+        assessment.efficient_scale.score,
     ]
     
     for i, score in enumerate(dimension_scores):
@@ -118,8 +116,7 @@ def validate_moat_assessment(assessment: MoatAssessment) -> Tuple[bool, str]:
         assessment.network_effects,
         assessment.intangible_assets,
         assessment.cost_advantages,
-        assessment.regulatory_barriers,
-        assessment.ecosystem_lockin,
+        assessment.efficient_scale,
     ]
     
     for dim in dimensions:
@@ -174,8 +171,7 @@ def get_rating_explanation(assessment: MoatAssessment) -> str:
         ("Network Effects", assessment.network_effects.score),
         ("Intangible Assets", assessment.intangible_assets.score),
         ("Cost Advantages", assessment.cost_advantages.score),
-        ("Regulatory Barriers", assessment.regulatory_barriers.score),
-        ("Ecosystem Lock-in", assessment.ecosystem_lockin.score),
+        ("Efficient Scale", assessment.efficient_scale.score),
     ]
     
     strong_dims = [(name, score) for name, score in dimension_scores if score >= 4.0]

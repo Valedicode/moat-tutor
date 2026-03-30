@@ -63,15 +63,10 @@ MOAT_SOURCE_QUERIES = {
         "operational leverage margin expansion supply chain optimization",
         "cost leadership competitive pricing process improvement",
     ],
-    "regulatory_barriers": [
-        "regulatory approval government contract compliance certification",
-        "antitrust investigation regulatory scrutiny market regulation",
-        "licensing requirement entry barrier regulatory protection",
-    ],
-    "ecosystem_lockin": [
-        "platform ecosystem integration multi-product bundle strategy",
-        "developer tools API adoption third-party integration",
-        "cross-product synergy platform standard proprietary format",
+    "efficient_scale": [
+        "natural monopoly limited market size capital intensive barrier",
+        "market concentration oligopoly few viable competitors",
+        "infrastructure scale minimum efficient scale entry deterrence",
     ],
 }
 

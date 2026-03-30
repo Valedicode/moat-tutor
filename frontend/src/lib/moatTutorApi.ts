@@ -31,8 +31,7 @@ export type MoatAssessment = {
   network_effects: MoatDimensionScore;
   intangible_assets: MoatDimensionScore;
   cost_advantages: MoatDimensionScore;
-  regulatory_barriers: MoatDimensionScore;
-  ecosystem_lockin: MoatDimensionScore;
+  efficient_scale: MoatDimensionScore;
   overall_score: number;
   overall_rating: "Wide" | "Narrow" | "None";
   overall_confidence: "Low" | "Medium" | "High";
@@ -506,7 +505,7 @@ export type OverallMoatScore = {
     switching_costs: number;
     intangible_assets: number;
     cost_advantages: number;
-    regulatory_barriers: number;
+    efficient_scale: number;
   };
   trend: "strengthening" | "stable" | "weakening";
   summary: string;

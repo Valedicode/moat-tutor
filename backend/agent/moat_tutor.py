@@ -25,6 +25,7 @@ from services.roic_calculator import (
     check_roic_hurdle,
     compare_roic_to_peers as _compare_roic_to_peers_svc,
     compare_moat_profiles as _compare_moat_profiles_svc,
+    estimate_wacc_detailed as _estimate_wacc_detailed_svc,
 )
 from services.valuation_estimator import (
     estimate_fair_value,
@@ -40,6 +41,8 @@ from services.moat_news_classifier import (
     classify_passages_by_moat_source,
     detect_moat_milestones as _detect_moat_milestones_svc,
 )
+from services.capital_allocation import assess_capital_allocation
+from services.financial_health import assess_financial_health
 
 # Import FNSPID retrieval for historical semantic search
 try:
@@ -65,8 +68,7 @@ MOAT_CHARACTERISTICS = """
 2. **Switching Costs** - High cost or difficulty for customers to switch to competitors
 3. **Intangible Assets** - Strong brands, patents, proprietary data, or regulatory advantages
 4. **Cost Advantages** - Economies of scale, unique resources, or efficient processes
-5. **Regulatory Barriers** - Regulatory protection, licenses, or approval requirements that limit competition
-6. **Ecosystem / Platform Lock-in** - Deep integration, proprietary standards, or multi-product ecosystems that create migration friction
+5. **Efficient Scale** - Market only supports limited competitors profitably due to natural size constraints
 """
 
 
@@ -164,9 +166,17 @@ You have access to a comprehensive suite of quantitative tools that provide MATH
 - Invested Capital = Equity + Debt - Excess Cash
 
 **What ROIC Tells Us:**
-- **ROIC > WACC (10% for tech)** = Company earns more than its cost of capital = Value creation
+- **ROIC > WACC** = Company earns more than its cost of capital = Value creation
 - **ROIC < WACC** = Company destroys value = No moat
 - **Sustained high ROIC (10+ years)** = Durable competitive advantage = Strong moat
+
+**WACC Methodology (Morningstar-Style Building Blocks):**
+WACC is NOT estimated using market beta or CAPM. It uses Morningstar's building-block approach:
+- **Cost of Equity**: Base nominal return (~9.0%) adjusted by a **systematic risk category** (Below Average / Average / Above Average / Very High). The risk category is inferred from business stability (revenue volatility, operating leverage, financial leverage) rather than stock-price covariance.
+- **Cost of Debt**: Risk-free base + inflation + a **credit spread category** (Low / Moderate / Elevated / High), tax-adjusted. The credit category is inferred from interest coverage and D/E ratio.
+- **Capital Structure**: Uses normalized median historical debt-to-capital rather than today's market cap, avoiding distortion from price momentum or temporary market conditions.
+
+This produces stable, explainable WACC estimates consistent with how Morningstar analysts actually set cost of capital.
 
 **Teaching Guidance for ROIC:**
 When presenting ROIC data, always explain:
@@ -196,10 +206,10 @@ The ROIC analysis includes **fade period estimation**:
 - **Stage II (Fade Period)**: Estimated years until ROIC converges to WACC
 - **Stage III (Terminal)**: ROIC = WACC (no excess returns)
 
-**Classification:**
-- Wide Moat: 15+ year fade period (ROIC stable/improving, 2x+ WACC)
-- Narrow Moat: 8-14 year fade period
-- No Moat: <8 years or ROIC already at/below WACC
+**Classification (linked to 3-stage DCF):**
+- Wide Moat: 15+ year fade period -> 20-year Stage II in DCF
+- Narrow Moat: 8-14 year fade period -> 10-year Stage II in DCF
+- No Moat: <8 years or ROIC already at/below WACC -> 5-year Stage II in DCF
 
 **Teaching Guidance for Fade Period:**
 Explain fade period in terms of competitive dynamics:
@@ -207,20 +217,28 @@ Explain fade period in terms of competitive dynamics:
 - "Fade period estimates are uncertain — they're projections based on ROIC trends. A company with stable/improving ROIC gets a longer fade; declining ROIC shortens it. Regulatory changes, technological disruption, or competitive breakthroughs could accelerate the fade."
 - "Compare fade periods: NVDA (20+ years, Wide Moat) vs AMD (8 years, Narrow Moat) shows the difference between structural advantages (CUDA ecosystem, switching costs) vs cyclical success (good chips today, but easily matched tomorrow)."
 
-### Fair Value & Price/Fair Value Ratio
+### Fair Value & Price/Fair Value Ratio (3-Stage DCF)
 
-**Tool:** `get_valuation_analysis(ticker)` - Simplified DCF fair value estimate
+**Tool:** `get_valuation_analysis(ticker)` - Morningstar-style 3-stage DCF fair value estimate
 
-**5-Star Rating System (based on Price/Fair Value ratio):**
-- 5-Star: P/FV < 0.60 (deep discount, high margin of safety)
-- 4-Star: P/FV 0.60-0.80 (undervalued)
-- 3-Star: P/FV 0.80-1.20 (fairly valued)
-- 2-Star: P/FV 1.20-1.40 (overvalued)
-- 1-Star: P/FV > 1.40 (significantly overvalued)
+The DCF uses three stages linked to moat strength:
+- **Stage I (Explicit Forecast, years 1-5)**: Full year-by-year FCF projection at estimated growth rate
+- **Stage II (Fade, linked to moat rating)**: Growth fades linearly from current rate toward terminal rate. Wide Moat = 20-year fade, Narrow = 10, No Moat = 5
+- **Stage III (Perpetuity)**: Gordon Growth Model at terminal growth rate (~3%)
 
-**Teaching Moment**: "The Price/Fair Value ratio tells us whether the market has already priced in a company's moat. A 5-star Wide Moat company is rare—it means the market is UNDERVALUING proven competitive advantages. This is where the Morningstar framework finds the best risk-adjusted opportunities."
+Equity bridge: Enterprise Value = PV(Stage I) + PV(Stage II) + PV(Stage III) + Excess Cash. Then subtract debt to arrive at Equity Value, divide by shares for Fair Value per Share.
 
-**Teaching Moment**: "Fair value convergence: Over time, market prices tend to converge toward intrinsic value. Companies trading below fair value with wide moats have a natural tailwind—the market eventually recognizes what the fundamentals already show."
+**5-Star Rating System (uncertainty-adjusted):**
+Star rating cutoffs depend on the uncertainty level. Higher uncertainty requires a deeper discount:
+- Low Uncertainty: 5-star at 80% of FV, 4-star at 90%
+- Medium: 5-star at 70%, 4-star at 80%
+- High: 5-star at 60%, 4-star at 75%
+- Very High: 5-star at 50%, 4-star at 65%
+- Extreme: 5-star at 25%, 4-star at 50%
+
+**Teaching Moment**: "The 3-stage DCF reflects how moats affect value. A Wide Moat company gets a 20-year fade period because it takes that long for competitors to erode the advantage. This longer period of excess returns translates directly into higher fair value."
+
+**Teaching Moment**: "The Price/Fair Value ratio tells us whether the market has already priced in a company's moat. But the SAME P/FV ratio means different things at different uncertainty levels. A stock at 70% of fair value is 5-star if uncertainty is Medium, but only 4-star if uncertainty is High."
 
 ### Uncertainty Rating
 
@@ -233,7 +251,35 @@ Explain fade period in terms of competitive dynamics:
 - **Very High**: Significant unpredictability (50% margin of safety)
 - **Extreme**: Highly volatile or unproven business (60% margin of safety)
 
-**Teaching Moment**: "Uncertainty determines HOW MUCH discount you need to buy safely. A Wide Moat stock with Low uncertainty needs only a 20% discount to be 5-star, but a Wide Moat with Very High uncertainty needs 50%. Higher uncertainty = larger margin of safety required."
+**Teaching Moment**: "Uncertainty determines HOW MUCH discount you need to buy safely. The star-rating cutoffs are now uncertainty-adjusted: a stock at 70% of fair value earns 5 stars under Medium uncertainty but only 4 stars under High uncertainty. Higher uncertainty = larger margin of safety required."
+
+### Capital Allocation Assessment
+
+**Tool:** `get_capital_allocation_analysis(ticker)` - Assesses management quality
+
+Evaluates management's capital allocation decisions across three pillars:
+- **Balance Sheet Management**: Leverage discipline, interest coverage, debt trajectory
+- **Investment Strategy**: Whether reinvestment earns ROIC above WACC
+- **Shareholder Distributions**: Dividend policy and buyback effectiveness
+
+Ratings: **Exemplary** (score 4.5+/6), **Standard** (2.5-4.5), **Poor** (<2.5)
+
+**Teaching Guidance**: "Capital allocation tells us whether management is a good steward of the moat. A company can have strong competitive advantages but destroy value through excessive debt, wasteful acquisitions, or inadequate shareholder returns. Exemplary allocators widen the moat; Poor allocators erode it."
+
+### Financial Health Assessment
+
+**Tool:** `get_financial_health_analysis(ticker)` - Evaluates value destruction risk
+
+Assesses whether financial distress could destroy cumulative economic profit:
+- **Leverage**: Debt/Equity, Debt/EBIT, interest coverage
+- **Liquidity**: Current ratio, cash position relative to assets
+- **Cash Flow Sufficiency**: FCF consistency, debt repayment capacity
+
+Status: **Healthy**, **Watch**, **Distressed**, or **Critical**
+
+**CRITICAL**: If financial health status is **Critical**, the system forces a **No-Moat** rating regardless of competitive advantages. This is the Morningstar "value destruction override" -- even a company with strong network effects or switching costs gets No Moat if it faces severe financial distress.
+
+**Teaching Guidance**: "Financial health acts as a safety check. A company might have the strongest brand in its industry, but if it's drowning in debt with no cash flow to service it, those advantages don't matter -- the moat can't protect a sinking ship."
 
 ### Structural Moat Sources (Data-Driven)
 
@@ -244,7 +290,7 @@ Instead of relying on static profiles, this tool analyzes:
 - Low revenue volatility + positive growth -> Switching Costs
 - Revenue growth > peers + consistency -> Network Effects
 - ROIC > 25% sustained -> Cost Advantages
-- High ROIC + stable trend + revenue stability -> Ecosystem/Platform Lock-in
+- High ROIC + stable trend + revenue stability -> Efficient Scale
 
 **Connecting ROIC to Moat Sources:**
 - **High ROIC + Network Effects**: Platform scales with low incremental capital.
@@ -271,7 +317,7 @@ Compares companies across a standardized methodology:
 **Tool:** `analyze_moat_news(ticker, start_date, end_date)` - Classify news by moat source
 
 Scans historical news and classifies passages into moat categories:
-- Network Effects, Switching Costs, Intangible Assets, Cost Advantages, Regulatory Barriers, Ecosystem Lock-in
+- Network Effects, Switching Costs, Intangible Assets, Cost Advantages, Efficient Scale
 - Uses semantic similarity against a curated query bank per moat source
 - Returns evidence passages grouped by source with confidence levels
 
@@ -357,7 +403,7 @@ When performing a full analysis, cover these elements (in whatever order is natu
 3. **News Themes**: Cluster into 2-3 moat-relevant themes with causal reasoning.
 
 4. **Moat Reasoning**: Use Signal -> Mechanism -> Moat Impact chains for the relevant dimensions:
-   - Switching Costs, Network Effects, Cost Advantages, Intangible Assets, Regulatory Barriers, Ecosystem Lock-in
+   - Switching Costs, Network Effects, Cost Advantages, Intangible Assets, Efficient Scale
 
 5. **Uncertainty**: 1-2 key uncertainties or counterfactuals.
 
@@ -374,11 +420,12 @@ After the conclusion, append the hidden structured assessment for programmatic e
   "network_effects": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
   "intangible_assets": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
   "cost_advantages": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
-  "regulatory_barriers": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
-  "ecosystem_lockin": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
+  "efficient_scale": {{"score": 0, "direction": "Stable", "confidence": "Low", "rationale": "..."}},
   "overall_score": 0,
   "overall_rating": "None",
   "overall_confidence": "Low",
+  "capital_allocation_rating": "Standard",
+  "financial_health_status": "Watch",
   "assessment_period": "start to end"
 }}
 ```
@@ -586,7 +633,7 @@ def get_moat_characteristics(ticker: str) -> str:
     - Revenue growth consistency -> Network Effects
     - Revenue stability -> Switching Costs
     - ROIC vs WACC -> Cost Advantages
-    - Combined indicators -> Ecosystem/Platform Lock-in
+    - Combined indicators -> Efficient Scale
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
@@ -760,6 +807,63 @@ def get_roic_analysis(ticker: str, years: int = 10) -> str:
         
     except Exception as e:
         return f"Error calculating ROIC for {ticker}: {str(e)}"
+
+
+@tool
+def get_wacc_breakdown(ticker: str) -> str:
+    """
+    Get a detailed WACC (Weighted Average Cost of Capital) breakdown.
+
+    Uses a Morningstar-style building-block approach -- NOT market beta or CAPM.
+
+    Shows:
+    - Cost of Equity: base nominal return +/- systematic risk category
+    - Cost of Debt: risk-free + credit spread, tax-adjusted
+    - Capital Structure: normalized historical weights (not today's market cap)
+    - Final WACC with full explanation of each component
+
+    This is essential for teaching WHY a company has a particular cost of capital
+    and how it relates to moat analysis (ROIC vs WACC spread).
+
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
+
+    Returns:
+        Full WACC breakdown with methodology explanation
+    """
+    try:
+        result = _estimate_wacc_detailed_svc(ticker, use_cache=True)
+
+        if "error" in result:
+            return f"Unable to estimate WACC for {ticker}: {result['error']}"
+
+        response = f"WACC Analysis for {result['ticker']} (Morningstar-Style Building Blocks):\n\n"
+        response += f"WACC: {result['wacc_pct']:.2f}%\n\n"
+
+        coe = result.get("cost_of_equity", {})
+        response += f"--- Cost of Equity: {coe.get('coe_pct', 'N/A')}% ---\n"
+        response += f"  Base nominal return: {result['assumptions']['base_nominal_coe_pct']:.1f}% "
+        response += f"(real {result['assumptions']['real_market_return_pct']:.1f}% + "
+        response += f"inflation {result['assumptions']['inflation_expectation_pct']:.1f}%)\n"
+        response += f"  Systematic risk category: {coe.get('systematic_risk_category', 'N/A')}\n"
+        response += f"  Risk premium adjustment: {coe.get('risk_premium_pct', 0):+.2f}%\n\n"
+
+        cod = result.get("cost_of_debt", {})
+        response += f"--- Cost of Debt (after-tax): {cod.get('aftertax_cod_pct', 'N/A')}% ---\n"
+        response += f"  Pre-tax cost of debt: {cod.get('pretax_cod_pct', 'N/A')}%\n"
+        response += f"  Credit risk category: {cod.get('credit_risk_category', 'N/A')}\n"
+        response += f"  Credit spread: {cod.get('credit_spread_pct', 'N/A')}%\n"
+        response += f"  Tax rate: {cod.get('tax_rate_pct', 'N/A')}%\n\n"
+
+        cs = result.get("capital_structure", {})
+        response += f"--- Capital Structure ---\n"
+        response += f"  Equity weight: {cs.get('equity_weight_pct', 'N/A')}%\n"
+        response += f"  Debt weight: {cs.get('debt_weight_pct', 'N/A')}%\n"
+        response += f"  Source: {cs.get('source', 'N/A')}\n"
+
+        return response
+    except Exception as e:
+        return f"Error estimating WACC for {ticker}: {str(e)}"
 
 
 @tool
@@ -1164,6 +1268,83 @@ def detect_moat_milestones(ticker: str) -> str:
 
 
 @tool
+def get_capital_allocation_analysis(ticker: str) -> str:
+    """
+    Assess management's capital allocation quality for a company.
+
+    Evaluates three pillars:
+    1. Balance Sheet Management - leverage discipline and debt serviceability
+    2. Investment Strategy - whether reinvestment earns ROIC above WACC
+    3. Shareholder Distributions - dividend policy and buyback effectiveness
+
+    Rating: Exemplary / Standard / Poor (each pillar scored 0-2, total 0-6).
+
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
+
+    Returns:
+        Capital allocation rating with pillar scores and explanation
+    """
+    try:
+        result = assess_capital_allocation(ticker, use_cache=True)
+
+        response = f"Capital Allocation Assessment for {result['ticker']}:\n\n"
+        response += f"Rating: {result['capital_allocation_rating']} (score {result['overall_score']:.1f}/6.0)\n\n"
+
+        for pillar_name, pillar_data in result["pillar_scores"].items():
+            display = pillar_name.replace("_", " ").title()
+            response += f"  {display}: {pillar_data['score']:.1f}/2.0\n"
+            response += f"    {pillar_data['rationale']}\n\n"
+
+        response += f"Summary: {result['explanation']}\n"
+        return response
+    except Exception as e:
+        return f"Error assessing capital allocation for {ticker}: {str(e)}"
+
+
+@tool
+def get_financial_health_analysis(ticker: str) -> str:
+    """
+    Assess financial health and value destruction risk for a company.
+
+    Evaluates whether financial distress could destroy cumulative economic
+    profit. If risk is Critical, forces a No-Moat override regardless of
+    competitive advantages.
+
+    Components:
+    - Leverage (Debt/Equity, interest coverage, Debt/EBIT)
+    - Liquidity (current ratio, cash position)
+    - Cash Flow Sufficiency (FCF consistency, debt repayment capacity)
+
+    Status: Healthy / Watch / Distressed / Critical
+    Override: moat_override_flag = true forces No-Moat rating
+
+    Args:
+        ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT', 'NVDA')
+
+    Returns:
+        Financial health status, risk assessment, and override flag
+    """
+    try:
+        result = assess_financial_health(ticker, use_cache=True)
+
+        response = f"Financial Health Assessment for {result['ticker']}:\n\n"
+        response += f"Status: {result['financial_health_status']}\n"
+        response += f"Value Destruction Risk: {result['value_destruction_risk']:.0%}\n"
+        response += f"Moat Override Flag: {'YES - forces No Moat' if result['moat_override_flag'] else 'No'}\n\n"
+
+        for comp_name, comp_data in result["components"].items():
+            display = comp_name.replace("_", " ").title()
+            response += f"  {display}: {comp_data['score']:.1f}/4.0\n"
+            response += f"    {comp_data['rationale']}\n\n"
+
+        response += f"Summary: {result['explanation']}\n"
+        return response
+    except Exception as e:
+        return f"Error assessing financial health for {ticker}: {str(e)}"
+
+
+@tool
 def analyze_resilience(ticker: str, crisis: str = "") -> str:
     """
     Analyze how a company performed during market crises.
@@ -1338,12 +1519,15 @@ def create_moat_agent():
         get_moat_characteristics,       # Data-driven moat source identification
         search_news_by_topic,            # Semantic search in historical news
         get_roic_analysis,               # ROIC + excess profit + fade period
+        get_wacc_breakdown,              # Morningstar-style WACC breakdown
         compare_roic_to_peers,           # Single-dimension ROIC peer comparison
         get_valuation_analysis,          # Fair value (DCF) + P/FV ratio + star rating
         get_uncertainty_analysis,        # Uncertainty rating + margin of safety
         compare_moat_to_peers,           # Multi-dimensional peer comparison
         analyze_moat_news,              # News-to-moat-source classification
         detect_moat_milestones,         # Milestone detection (price + news + ROIC)
+        get_capital_allocation_analysis,  # Capital allocation rating
+        get_financial_health_analysis,   # Financial health + moat override
         analyze_resilience,             # Crisis drawdown and recovery analysis
         compare_resilience_to_peers,    # Peer resilience comparison
     ]
