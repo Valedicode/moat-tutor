@@ -18,6 +18,7 @@ type ActiveShellProps = {
   endYear: number;
   onStartYearChange: (year: number) => void;
   onEndYearChange: (year: number) => void;
+  isSending?: boolean;
 };
 
 export function ActiveShell({
@@ -36,6 +37,7 @@ export function ActiveShell({
   endYear,
   onStartYearChange,
   onEndYearChange,
+  isSending,
 }: ActiveShellProps) {
   return (
     <ThreeColumnLayout
@@ -54,6 +56,7 @@ export function ActiveShell({
       endYear={endYear}
       onStartYearChange={onStartYearChange}
       onEndYearChange={onEndYearChange}
+      isSending={isSending}
     />
   );
 }

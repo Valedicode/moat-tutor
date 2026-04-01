@@ -9,6 +9,7 @@ import { Logo } from "@/components/Logo";
 import { nowStamp } from "@/utils/date";
 import { chat, chatStream, type StreamEvent, type MoatAssessment } from "@/lib/moatTutorApi";
 import { availableCompanies } from "@/constants/companies";
+import { useMode } from "@/contexts/ModeContext";
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -20,6 +21,7 @@ export default function Home() {
   const [endYear, setEndYear] = useState<number>(2000);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const [moatAssessment, setMoatAssessment] = useState<MoatAssessment | null>(null);
+  const { mode } = useMode();
 
   const isActiveSession = messages.length > 0;
 
@@ -43,6 +45,9 @@ export default function Home() {
     if (isSending) return;
     const text = (value ?? inputValue).trim();
     if (!text) return;
+
+    // Snapshot mode at send-time so toggling mid-generation has no effect
+    const sendMode = mode;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -73,6 +78,7 @@ export default function Home() {
         ticker,
         startDate,
         endDate,
+        mode: sendMode,
         onEvent: (evt: StreamEvent) => {
           if (evt.event === "meta") {
             setSessionId(evt.data.session_id);
@@ -113,7 +119,7 @@ export default function Home() {
       });
     } catch (error) {
       try {
-        const result = await chat({ query: text, sessionId, ticker, startDate, endDate });
+        const result = await chat({ query: text, sessionId, ticker, startDate, endDate, mode: sendMode });
         setSessionId(result.session_id);
         setMessages((prev) =>
           prev.map((msg) => (msg.id === placeholderId ? result.message : msg)),
@@ -191,6 +197,7 @@ export default function Home() {
           endYear={endYear}
           onStartYearChange={setStartYear}
           onEndYearChange={setEndYear}
+          isSending={isSending}
         />
       )}
     </main>
