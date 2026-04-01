@@ -331,7 +331,12 @@ def is_ticker_supported(ticker: str) -> bool:
     known_supported = {
         "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "NVDA", "AMD",
         "INTC", "CSCO", "ORCL", "AVGO", "MU", "QCOM", "TXN", "ADBE",
-        "CRM", "IBM", "PLTR", "SNOW", "NET"
+        "CRM", "IBM", "PLTR", "SNOW", "NET",
+        # MOAT ETF Technology Sector additions
+        "NOW", "WDAY", "VEEV", "DDOG", "TYL", "FICO",
+        "NXPI", "AMAT", "ENTG",
+        "FTNT", "PANW",
+        "MSI", "BR", "TRU", "CSGP",
     }
     
     return ticker.upper() in known_supported

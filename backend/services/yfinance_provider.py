@@ -20,6 +20,7 @@ CACHE_DIR = Path(__file__).parent.parent / "data" / "cache"
 
 # Whitelist of supported tickers
 SUPPORTED_TICKERS = {
+    # Original tickers
     "NVDA": "NVIDIA Corporation",
     "AAPL": "Apple Inc.",
     "MSFT": "Microsoft Corporation",
@@ -29,7 +30,29 @@ SUPPORTED_TICKERS = {
     "CSCO": "Cisco Systems, Inc.",
     "PLTR": "Palantir Technologies Inc.",
     "MU": "Micron Technology",
-    "GOOGL": "Alphabet Inc. (Google)",  # Keep existing ones from CSV
+    "GOOGL": "Alphabet Inc. (Google)",
+    # MOAT ETF Technology Sector -- Software & SaaS
+    "ADBE": "Adobe Inc.",
+    "CRM": "Salesforce.com Inc.",
+    "NOW": "ServiceNow Inc.",
+    "WDAY": "Workday Inc.",
+    "VEEV": "Veeva Systems Inc.",
+    "DDOG": "Datadog Inc.",
+    "TYL": "Tyler Technologies Inc.",
+    "FICO": "Fair Isaac Corp.",
+    # MOAT ETF Technology Sector -- Semiconductors & Hardware
+    "NXPI": "NXP Semiconductors NV",
+    "AMAT": "Applied Materials Inc.",
+    "ENTG": "Entegris Inc.",
+    # MOAT ETF Technology Sector -- Cybersecurity
+    "FTNT": "Fortinet Inc.",
+    "PANW": "Palo Alto Networks Inc.",
+    # MOAT ETF Technology Sector -- Platforms & Data Infrastructure
+    "META": "Meta Platforms Inc.",
+    "MSI": "Motorola Solutions Inc.",
+    "BR": "Broadridge Financial Solutions Inc.",
+    "TRU": "TransUnion",
+    "CSGP": "CoStar Group Inc.",
 }
 
 # Date range constraints

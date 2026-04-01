@@ -26,7 +26,12 @@ from services.fundamentals_provider import (
 
 # All supported tickers (from your FNSPID/news data)
 ALL_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "NVDA", "AMD", "AVGO", "ORCL", "CSCO", "MU", "PLTR"
+    "AAPL", "MSFT", "GOOGL", "NVDA", "AMD", "AVGO", "ORCL", "CSCO", "MU", "PLTR",
+    # MOAT ETF Technology Sector
+    "ADBE", "CRM", "NOW", "WDAY", "VEEV", "DDOG", "TYL", "FICO",
+    "NXPI", "AMAT", "ENTG",
+    "FTNT", "PANW",
+    "META", "MSI", "BR", "TRU", "CSGP",
 ]
 
 # Financial statements to fetch
@@ -205,7 +210,7 @@ def main():
         for ticker, stmts in remaining:
             print(f"  {ticker}: {', '.join(stmts)}")
     else:
-        print("✓ All tickers have complete data!")
+        print("[OK] All tickers have complete data!")
 
 
 if __name__ == "__main__":
