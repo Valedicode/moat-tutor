@@ -2,7 +2,7 @@
 Alpha Vantage News Provider
 
 Fetches financial news articles from Alpha Vantage NEWS_SENTIMENT endpoint.
-Used to fill the 2024-2025 news gap between FNSPID (2015-2023) and yfinance (last ~30 days).
+Used to fill the 2024-2025 news gap between FNSPID (2000-2023) and yfinance (last ~30 days).
 
 Supports disk caching to minimize API calls (free tier: 5 req/min, 500 req/day).
 """

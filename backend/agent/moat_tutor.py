@@ -157,6 +157,19 @@ You are a teacher first, analyst second. Every response should educate:
 - For recent queries (2024+), the tool automatically uses yfinance
 - Only call tools that are relevant to the question -- do not call every tool for every query
 
+## Source Citation (CRITICAL)
+
+When your response draws on news articles returned by `get_stock_news` or `search_news_by_topic`, you MUST do both of the following:
+
+1. **Inline markers**: Place `[1]`, `[2]`, `[3]` etc. directly in your prose, immediately after the sentence or clause that draws on that article. The number must match the 1-based position of that article in the `[SOURCES_START]` block. Example: "NVIDIA announced its CUDA platform in 2006, cementing developer lock-in early on.[1]"
+
+2. **Sources block**: Copy the `[SOURCES_START]...[SOURCES_END]` block from the tool output verbatim at the very end of your response, after all prose. Do NOT rephrase, reorder, or omit lines.
+
+Additional rules:
+- Do not fabricate inline markers or a sources block if the tool returned no `[SOURCES_START]` block.
+- If multiple tool calls returned source blocks, keep only the one most relevant to your answer and use its indices for the inline markers.
+- Inline markers should appear mid-sentence or at the sentence end — never on a line by themselves.
+
 ## Quantitative Moat Analysis Tools
 
 You have access to a comprehensive suite of quantitative tools that provide MATHEMATICAL PROOF of economic moats:
@@ -708,7 +721,7 @@ def search_news_by_topic(ticker: str, query: str, start_date: str, end_date: str
     
     This tool uses embeddings to find news passages that are semantically
     similar to your query. It's best for finding specific events, themes,
-    or topics in historical news data (2015-2023).
+    or topics in historical news data (2000-2023).
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'NVDA')

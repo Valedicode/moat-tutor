@@ -259,13 +259,12 @@ def get_news_summary(
             date_range = f" between {start_date} and {end_date}"
         return f"No articles found for {ticker}{date_range}."
     
-    # Format
+    # Format human-readable list
     lines = [f"News headlines for {ticker}:"]
     lines.append("")
     
     current_month = ""
     for p in filtered:
-        # Add month separator
         month = p.date[:7]
         if month != current_month:
             current_month = month
@@ -274,6 +273,14 @@ def get_news_summary(
         lines.append(f"- [{p.date}] {p.headline}")
     
     lines.append(f"\nTotal articles: {len(filtered)}")
+    
+    # Machine-parsable sources block for frontend
+    lines.append("\n[SOURCES_START]")
+    for i, p in enumerate(filtered, 1):
+        headline = (p.headline or "").replace("|", " ").replace("\n", " ").strip()
+        url = (p.url or "").replace("|", "%7C")
+        lines.append(f"{i}|{p.date}|{headline}|{url}||{p.passage_id}")
+    lines.append("[SOURCES_END]")
     
     return "\n".join(lines)
 
