@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Message } from "@/types/chat";
 import { ChatInput, MessageBubble } from "@/components/chat";
 import { StudioPanel } from "@/components/StudioPanel";
-import { MoatAssessment } from "@/lib/moatTutorApi";
+import { getKeyNews, type KeyNewsEvent, type MoatAssessment } from "@/lib/moatTutorApi";
 import { CompanySelectorCompact } from "@/components/CompanySelectorCompact";
 import { DateRangePickerCompact } from "@/components/DateRangePickerCompact";
+import { NewsSourcesBox, type NewsMode } from "@/components/sources/NewsSourcesBox";
+import { parseMessageSources } from "@/utils/sourceParsing";
 
 type ThreeColumnLayoutProps = {
   messages: Message[];
@@ -45,6 +47,61 @@ export function ThreeColumnLayout({
 }: ThreeColumnLayoutProps) {
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+
+  // --- News sidebar state ---
+  const [newsMode, setNewsMode] = useState<NewsMode>("key-news");
+  const [keyNews, setKeyNews] = useState<KeyNewsEvent[]>([]);
+  const [keyNewsLoading, setKeyNewsLoading] = useState(false);
+  const [keyNewsError, setKeyNewsError] = useState<string | null>(null);
+  const [highlightedSourceId, setHighlightedSourceId] = useState<string | null>(null);
+
+  // Derive referenced sources from the latest assistant message
+  const referencedSources = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant") {
+        return parseMessageSources(messages[i].content ?? "").sources;
+      }
+    }
+    return [];
+  }, [messages]);
+
+  // Fetch key news when ticker/date selection changes
+  useEffect(() => {
+    if (!ticker || !startDate || !endDate) {
+      setKeyNews([]);
+      setKeyNewsError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setKeyNewsLoading(true);
+    setKeyNewsError(null);
+
+    getKeyNews({ ticker, startDate, endDate, signal: controller.signal })
+      .then((res) => {
+        setKeyNews(res.events);
+        setKeyNewsLoading(false);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setKeyNewsError(
+          err instanceof Error ? err.message : "Failed to load key news",
+        );
+        setKeyNewsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [ticker, startDate, endDate]);
+
+  // Citation click handler: open sidebar, switch to referenced, highlight
+  const handleCitationClick = useCallback(
+    (passageId: string) => {
+      if (!leftPanelOpen) setLeftPanelOpen(true);
+      setNewsMode("referenced");
+      setHighlightedSourceId(passageId);
+    },
+    [leftPanelOpen],
+  );
 
   return (
     <div className="mx-auto flex w-full gap-4 mt-16 sm:mt-20" style={{ maxWidth: "100%", height: "calc(100vh - 8rem)" }}>
@@ -110,7 +167,7 @@ export function ThreeColumnLayout({
             </div>
 
             {/* Date Range */}
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 mb-6">
               <label
                 className="block text-xs uppercase tracking-wider mb-2 font-semibold"
                 style={{ color: "var(--text-secondary)" }}
@@ -125,10 +182,27 @@ export function ThreeColumnLayout({
               />
             </div>
 
+            {/* News Sources Box */}
+            <div
+              className="flex-1 min-h-0 overflow-y-auto scrollbar-hide border-t pt-4"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <NewsSourcesBox
+                mode={newsMode}
+                onModeChange={setNewsMode}
+                referencedSources={referencedSources}
+                keyNews={keyNews}
+                keyNewsLoading={keyNewsLoading}
+                keyNewsError={keyNewsError}
+                highlightedSourceId={highlightedSourceId}
+                hasTicker={!!ticker}
+              />
+            </div>
+
             {/* Selected Info Summary */}
             {ticker && (
               <div
-                className="mt-auto pt-4 border-t text-xs"
+                className="flex-shrink-0 pt-4 border-t text-xs"
                 style={{
                   borderColor: "var(--border)",
                   color: "var(--text-tertiary)",
@@ -232,7 +306,7 @@ export function ThreeColumnLayout({
             className="scrollbar-hide flex-1 min-h-0 space-y-4 overflow-y-auto pr-2"
           >
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble key={message.id} message={message} onCitationClick={handleCitationClick} />
             ))}
           </div>
 
@@ -301,7 +375,6 @@ export function ThreeColumnLayout({
                 ticker={ticker}
                 startDate={startDate}
                 endDate={endDate}
-                moatAssessment={moatAssessment}
                 startYear={startYear}
                 endYear={endYear}
               />

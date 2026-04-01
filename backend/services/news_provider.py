@@ -3,7 +3,7 @@ News Data Provider
 
 Fetches financial news articles from multiple sources:
 1. yfinance (Yahoo Finance) - for recent news (last 30 days)
-2. FNSPID dataset - for historical news (2015-2023)
+2. FNSPID dataset - for historical news (2000-2023)
 
 Stores data as JSON files for reproducibility in research experiments.
 Supports the same whitelist of tech companies as the price provider.
@@ -39,6 +39,7 @@ NEWS_DIR = Path(__file__).parent.parent / "data" / "news"
 
 # Reuse the same whitelist from price provider for consistency
 SUPPORTED_TICKERS = {
+    # Original tickers
     "NVDA": "NVIDIA Corporation",
     "AAPL": "Apple Inc.",
     "MSFT": "Microsoft Corporation",
@@ -49,6 +50,28 @@ SUPPORTED_TICKERS = {
     "PLTR": "Palantir Technologies Inc.",
     "MU": "Micron Technology",
     "GOOGL": "Alphabet Inc. (Google)",
+    # MOAT ETF Technology Sector -- Software & SaaS
+    "ADBE": "Adobe Inc.",
+    "CRM": "Salesforce.com Inc.",
+    "NOW": "ServiceNow Inc.",
+    "WDAY": "Workday Inc.",
+    "VEEV": "Veeva Systems Inc.",
+    "DDOG": "Datadog Inc.",
+    "TYL": "Tyler Technologies Inc.",
+    "FICO": "Fair Isaac Corp.",
+    # MOAT ETF Technology Sector -- Semiconductors & Hardware
+    "NXPI": "NXP Semiconductors NV",
+    "AMAT": "Applied Materials Inc.",
+    "ENTG": "Entegris Inc.",
+    # MOAT ETF Technology Sector -- Cybersecurity
+    "FTNT": "Fortinet Inc.",
+    "PANW": "Palo Alto Networks Inc.",
+    # MOAT ETF Technology Sector -- Platforms & Data Infrastructure
+    "META": "Meta Platforms Inc.",
+    "MSI": "Motorola Solutions Inc.",
+    "BR": "Broadridge Financial Solutions Inc.",
+    "TRU": "TransUnion",
+    "CSGP": "CoStar Group Inc.",
 }
 
 # Date range constraints
@@ -409,7 +432,7 @@ def get_news_for_agent(
     Get formatted news string for the MoatTutor agent.
     
     This function intelligently chooses between:
-    - FNSPID historical data (2015-2023) for older date ranges
+    - FNSPID historical data (2000-2023) for older date ranges
     - Alpha Vantage (2024-2025) for the gap year period
     - yfinance (recent 30 days) for current news
     
@@ -431,8 +454,8 @@ def get_news_for_agent(
     except ValueError:
         return f"Error: Invalid date format. Use YYYY-MM-DD."
     
-    # Define period boundaries
-    fnspid_start = datetime(2015, 1, 1)
+    # Define period boundaries (aligned with fnspid_news_pipeline MIN_DATE = "2000-01-01")
+    fnspid_start = datetime(2000, 1, 1)
     fnspid_end = datetime(2023, 12, 31)
     alpha_vantage_start = datetime(2024, 1, 1)
     alpha_vantage_end = datetime(2025, 12, 31)
@@ -443,7 +466,7 @@ def get_news_for_agent(
     
     news_sections = []
     
-    # Fetch from FNSPID if date range overlaps 2015-2023
+    # Fetch from FNSPID if date range overlaps 2000-2023
     if overlaps_fnspid and FNSPID_AVAILABLE and is_fnspid_data_available(ticker_upper):
         try:
             # Constrain dates to FNSPID coverage
@@ -495,7 +518,6 @@ def get_news_for_agent(
             )
             
             if articles:
-                # Provide condensed articles for the agent to cluster into moat-relevant themes
                 lines = [f"=== Recent News (Alpha Vantage: {av_start} to {av_end}) ===\n"]
                 lines.append(f"Articles retrieved: {len(articles)}\n")
                 
@@ -506,11 +528,19 @@ def get_news_for_agent(
                     
                     lines.append(f"{i}. [{date}] {title}")
                     if summary:
-                        # Condensed summary (100 chars max)
                         if len(summary) > 100:
                             summary = summary[:100] + "..."
                         lines.append(f"   {summary}")
                     lines.append("")
+                
+                lines.append("[SOURCES_START]")
+                for i, article in enumerate(articles, 1):
+                    headline = (article.get('title', '') or '').replace("|", " ").replace("\n", " ").strip()
+                    a_url = (article.get('url', '') or '').replace("|", "%7C")
+                    a_date = article.get('date', '')
+                    a_id = article.get('uuid', '')
+                    lines.append(f"{i}|{a_date}|{headline}|{a_url}||{a_id}")
+                lines.append("[SOURCES_END]")
                 
                 news_sections.append("\n".join(lines))
                 logger.info(f"Retrieved Alpha Vantage news for {ticker_upper}")
@@ -555,11 +585,20 @@ def get_news_for_agent(
         lines.append(f"{i}. [{date}] {title}")
         lines.append(f"   Source: {publisher}")
         if summary:
-            # Truncate long summaries
             if len(summary) > 200:
                 summary = summary[:200] + "..."
             lines.append(f"   Summary: {summary}")
         lines.append("")
+    
+    # Machine-parsable sources block for frontend
+    lines.append("[SOURCES_START]")
+    for i, article in enumerate(articles, 1):
+        headline = (article.get('title', '') or '').replace("|", " ").replace("\n", " ").strip()
+        a_url = (article.get('url', '') or '').replace("|", "%7C")
+        a_date = article.get('date', '')
+        a_id = article.get('uuid', '')
+        lines.append(f"{i}|{a_date}|{headline}|{a_url}||{a_id}")
+    lines.append("[SOURCES_END]")
     
     return "\n".join(lines)
 

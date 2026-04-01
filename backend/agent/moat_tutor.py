@@ -43,6 +43,14 @@ from services.moat_news_classifier import (
 )
 from services.capital_allocation import assess_capital_allocation
 from services.financial_health import assess_financial_health
+from services.etf_holdings import (
+    get_etf_tech_holdings as _get_etf_tech_holdings_svc,
+    get_sector_for_ticker,
+    is_moat_etf_holding,
+    get_etf_summary,
+    MOAT_TECH_SECTORS,
+    ETF_AS_OF_DATE,
+)
 
 # Import FNSPID retrieval for historical semantic search
 try:
@@ -148,6 +156,19 @@ You are a teacher first, analyst second. Every response should educate:
   - If the user asks for GENERAL analysis (e.g., "why did the stock move"), omit the query for chronological summary
 - For recent queries (2024+), the tool automatically uses yfinance
 - Only call tools that are relevant to the question -- do not call every tool for every query
+
+## Source Citation (CRITICAL)
+
+When your response draws on news articles returned by `get_stock_news` or `search_news_by_topic`, you MUST do both of the following:
+
+1. **Inline markers**: Place `[1]`, `[2]`, `[3]` etc. directly in your prose, immediately after the sentence or clause that draws on that article. The number must match the 1-based position of that article in the `[SOURCES_START]` block. Example: "NVIDIA announced its CUDA platform in 2006, cementing developer lock-in early on.[1]"
+
+2. **Sources block**: Copy the `[SOURCES_START]...[SOURCES_END]` block from the tool output verbatim at the very end of your response, after all prose. Do NOT rephrase, reorder, or omit lines.
+
+Additional rules:
+- Do not fabricate inline markers or a sources block if the tool returned no `[SOURCES_START]` block.
+- If multiple tool calls returned source blocks, keep only the one most relevant to your answer and use its indices for the inline markers.
+- Inline markers should appear mid-sentence or at the sentence end — never on a line by themselves.
 
 ## Quantitative Moat Analysis Tools
 
@@ -351,6 +372,33 @@ Measures for each crisis:
 **Teaching Moment**: "Price resilience during crises is a real-world stress test for moats. A company with a wide moat should have shallower drawdowns and faster recovery because its competitive advantages persist even when the economy contracts. Compare NVDA's recovery to AMD's after 2022 and you'll see the moat in action."
 
 **Teaching Moment (ROIC-Resilience Link)**: "Companies with high pre-crisis ROIC tend to recover faster because their business model generates returns that attract capital back. The moat protects the business; the business protects the stock price."
+
+### MOAT ETF Layer (VanEck Morningstar Wide Moat ETF)
+
+**Tool:** `get_etf_tech_sector_holdings(sub_sector?)` - Returns MOAT ETF technology sector holdings with portfolio weights
+
+The VanEck Morningstar Wide Moat ETF (ticker: MOAT) tracks companies that Morningstar identifies as having sustainable competitive advantages (wide economic moats) trading at attractive valuations. The ETF's methodology directly reflects the moat framework you teach.
+
+**Technology Sector Distribution (as of 2026-03-27, 22 companies across 4 sub-sectors):**
+
+- **Software & SaaS (10):** MSFT, ADBE, CRM, ORCL, NOW, WDAY, VEEV, DDOG, TYL, FICO
+- **Semiconductors & Hardware (5):** NVDA, NXPI, AMAT, AVGO, ENTG
+- **Cybersecurity (2):** FTNT, PANW
+- **Platforms & Data Infrastructure (5):** META, MSI, BR, TRU, CSGP
+
+**Weight data from Excel:** The tool returns per-holding `pct_net_assets` (% of net assets), per-sub-sector `sector_weight_pct`, and `total_tech_weight_pct` for the aggregate technology sector share. Use these weights to:
+- Compare how heavily the ETF is invested in each sub-sector (e.g., "Software & SaaS is the largest tech sub-sector at X% of net assets, reflecting Morningstar's view that this area has the deepest concentration of wide-moat companies at attractive valuations").
+- Highlight weight differences across sub-sectors -- they reflect where Morningstar's methodology sees the deepest moats AND the best relative valuations converging.
+- Contextualize individual holdings: a company with a higher weight signals stronger conviction (wider moat + bigger discount to fair value at rebalance).
+- When summarizing the tech sector, always mention the overall tech weight (total_tech_weight_pct) to frame how large a role technology plays in the full MOAT ETF.
+
+**How to use ETF context:**
+- When analyzing a company, note if it is a MOAT ETF holding -- this is independent validation that Morningstar's equity research team identified a wide moat.
+- ETF inclusion signals two things: (1) the company has durable competitive advantages, and (2) it was trading at an attractive valuation relative to Morningstar's fair value estimate at the time of rebalancing.
+- Sub-sector grouping helps contextualize peer comparisons (e.g., comparing FTNT vs PANW within Cybersecurity, or NVDA vs AMAT within Semiconductors).
+- If a user asks about the MOAT ETF, its technology holdings, or which companies Morningstar considers wide-moat, use the ETF tool to provide structured data.
+
+**Teaching Guidance**: "Being included in the MOAT ETF means Morningstar's analyst team independently verified a wide economic moat AND the stock was trading below fair value at the last rebalance. This is a real-world validation of the moat framework -- the same methodology you're learning about (ROIC vs WACC, competitive advantages, fade periods) is what drives actual ETF construction. The tech sector represents a significant portion of the MOAT ETF, with Software & SaaS being the largest tech sub-sector -- weight differences across sub-sectors reflect Morningstar's assessment of where the deepest moats and best valuations converge."
 
 ## How to Respond (Adapt to User Intent)
 
@@ -673,7 +721,7 @@ def search_news_by_topic(ticker: str, query: str, start_date: str, end_date: str
     
     This tool uses embeddings to find news passages that are semantically
     similar to your query. It's best for finding specific events, themes,
-    or topics in historical news data (2015-2023).
+    or topics in historical news data (2000-2023).
     
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'NVDA')
@@ -1477,6 +1525,26 @@ def compare_resilience_to_peers(ticker: str, peer_tickers_str: str, crisis: str 
         return f"Error comparing resilience: {str(e)}"
 
 
+@tool
+def get_etf_tech_sector_holdings(sub_sector: str = "") -> str:
+    """
+    Get MOAT ETF technology sector holdings grouped by sub-sector.
+
+    The VanEck Morningstar Wide Moat ETF (MOAT) holds companies with wide
+    economic moats trading at attractive valuations. This tool returns the
+    technology sector breakdown across Software & SaaS, Semiconductors &
+    Hardware, Cybersecurity, and Platforms & Data Infrastructure.
+
+    Args:
+        sub_sector: Optional filter (e.g. "Software", "Semiconductors",
+                    "Cybersecurity", "Platforms"). Leave empty for all.
+    """
+    import json
+
+    data = _get_etf_tech_holdings_svc(sub_sector=sub_sector or None)
+    return json.dumps(data, indent=2)
+
+
 # ============================================================================
 # LLM Configuration
 # ============================================================================
@@ -1530,6 +1598,7 @@ def create_moat_agent():
         get_financial_health_analysis,   # Financial health + moat override
         analyze_resilience,             # Crisis drawdown and recovery analysis
         compare_resilience_to_peers,    # Peer resilience comparison
+        get_etf_tech_sector_holdings,   # MOAT ETF technology sector holdings
     ]
     
     # Create LLM

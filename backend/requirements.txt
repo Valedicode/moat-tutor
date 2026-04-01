@@ -35,4 +35,7 @@ datasets>=2.14.0
 # OpenAI API (for embeddings and LLM)
 openai>=1.0.0
 
+# Excel parsing (for MOAT ETF holdings)
+openpyxl>=3.1.0
+
 

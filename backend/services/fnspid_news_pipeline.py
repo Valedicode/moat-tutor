@@ -49,6 +49,7 @@ FNSPID_CSV_URL = "https://huggingface.co/datasets/Zihan1004/FNSPID/resolve/main/
 
 # Supported tickers (same as news_provider.py)
 SUPPORTED_TICKERS = {
+    # Original tickers
     "NVDA": "NVIDIA Corporation",
     "AAPL": "Apple Inc.",
     "MSFT": "Microsoft Corporation",
@@ -60,6 +61,28 @@ SUPPORTED_TICKERS = {
     "MU": "Micron Technology",
     "GOOGL": "Alphabet Inc. (Google)",
     "GOOG": "Alphabet Inc. (Google)",  # Alternative ticker
+    # MOAT ETF Technology Sector -- Software & SaaS
+    "ADBE": "Adobe Inc.",
+    "CRM": "Salesforce.com Inc.",
+    "NOW": "ServiceNow Inc.",
+    "WDAY": "Workday Inc.",
+    "VEEV": "Veeva Systems Inc.",
+    "DDOG": "Datadog Inc.",
+    "TYL": "Tyler Technologies Inc.",
+    "FICO": "Fair Isaac Corp.",
+    # MOAT ETF Technology Sector -- Semiconductors & Hardware
+    "NXPI": "NXP Semiconductors NV",
+    "AMAT": "Applied Materials Inc.",
+    "ENTG": "Entegris Inc.",
+    # MOAT ETF Technology Sector -- Cybersecurity
+    "FTNT": "Fortinet Inc.",
+    "PANW": "Palo Alto Networks Inc.",
+    # MOAT ETF Technology Sector -- Platforms & Data Infrastructure
+    "META": "Meta Platforms Inc.",
+    "MSI": "Motorola Solutions Inc.",
+    "BR": "Broadridge Financial Solutions Inc.",
+    "TRU": "TransUnion",
+    "CSGP": "CoStar Group Inc.",
 }
 
 # Date range for historical data

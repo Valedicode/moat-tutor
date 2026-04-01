@@ -5,6 +5,14 @@ export type Message = {
   timestamp: string;
 };
 
+export type NewsSource = {
+  date: string;
+  headline: string;
+  url: string;
+  similarity: string;
+  passageId: string;
+};
+
 // Audio translation types
 export type TranslationRequest = {
   file: File;

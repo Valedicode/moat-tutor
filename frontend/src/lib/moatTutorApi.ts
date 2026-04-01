@@ -491,6 +491,89 @@ export async function analyzeComprehensive(params: {
 }
 
 // ============================================================================
+// Key News API (moat-classified news for sidebar)
+// ============================================================================
+
+export type KeyNewsEvent = {
+  date: string;
+  headline: string;
+  url: string;
+  moatSource: string;
+  strength: string;
+  similarity: number;
+  passageId: string;
+  passageText: string;
+};
+
+export type KeyNewsResponse = {
+  ticker: string;
+  dateRange: string;
+  events: KeyNewsEvent[];
+  primarySource: string | null;
+  totalClassified: number;
+};
+
+export async function getKeyNews(params: {
+  ticker: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  signal?: AbortSignal;
+}): Promise<KeyNewsResponse> {
+  try {
+    const queryParams = new URLSearchParams();
+    if (params.startDate) queryParams.set("start_date", params.startDate);
+    if (params.endDate) queryParams.set("end_date", params.endDate);
+
+    const url = `/api/v1/fundamentals/${params.ticker}/moat-news${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+
+    const raw = await fetchJson<{
+      ticker: string;
+      date_range: string;
+      sources: Record<string, Array<{
+        date: string;
+        headline: string;
+        url: string;
+        moat_source: string;
+        strength: string;
+        similarity: number;
+        passage_id: string;
+        passage_text: string;
+      }>>;
+      primary_source: string | null;
+      total_classified: number;
+    }>(url, { method: "GET", signal: params.signal });
+
+    const events: KeyNewsEvent[] = [];
+    for (const [, items] of Object.entries(raw.sources ?? {})) {
+      for (const item of items) {
+        events.push({
+          date: item.date,
+          headline: item.headline,
+          url: item.url,
+          moatSource: item.moat_source,
+          strength: item.strength,
+          similarity: item.similarity,
+          passageId: item.passage_id,
+          passageText: item.passage_text,
+        });
+      }
+    }
+
+    events.sort((a, b) => b.similarity - a.similarity);
+
+    return {
+      ticker: raw.ticker,
+      dateRange: raw.date_range,
+      events: events.slice(0, 15),
+      primarySource: raw.primary_source,
+      totalClassified: raw.total_classified,
+    };
+  } catch (error) {
+    throw new Error(`Key news request failed: ${toErrorMessage(error)}`);
+  }
+}
+
+// ============================================================================
 // Overall Moat Score API (2000-2025 Full Analysis)
 // ============================================================================
 
