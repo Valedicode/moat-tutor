@@ -1,50 +1,80 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Message } from "@/types/chat";
+import { NewsSource } from "@/types/chat";
+import { parseMessageSources } from "@/utils/sourceParsing";
 
 type MessageBubbleProps = {
   message: Message;
+  onCitationClick?: (passageId: string) => void;
 };
 
-type Source = {
-  date: string;
-  headline: string;
-  url: string;
-  similarity: string;
-  passageId: string;
+type CitationChipProps = {
+  index: number;
+  source: NewsSource;
+  onCitationClick?: (passageId: string) => void;
 };
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+function CitationChip({ index, source, onCitationClick }: CitationChipProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const id = source.passageId || `ref-${index - 1}`;
+        if (onCitationClick) onCitationClick(id);
+      }}
+      className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold transition-all hover:scale-110 align-middle relative -top-px mx-0.5"
+      style={{
+        backgroundColor: "color-mix(in srgb, var(--accent) 15%, transparent)",
+        color: "var(--accent)",
+      }}
+      title={source.headline || source.url || `Source ${index}`}
+    >
+      {index}
+    </button>
+  );
+}
+
+function renderInlineText(
+  text: string,
+  sources: NewsSource[],
+  onCitationClick?: (passageId: string) => void,
+): ReactNode[] {
+  // Split on [N] markers, keeping the delimiters
+  const parts = text.split(/(\[\d+\])/);
+  return parts.map((part, i) => {
+    const match = part.match(/^\[(\d+)\]$/);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      const source = sources[n - 1];
+      if (source) {
+        return (
+          <CitationChip
+            key={`chip-${i}`}
+            index={n}
+            source={source}
+            onCitationClick={onCitationClick}
+          />
+        );
+      }
+      // No matching source — render as plain text
+      return <span key={`plain-${i}`}>{part}</span>;
+    }
+    return <span key={`text-${i}`}>{part}</span>;
+  });
+}
+
+export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
-  const { mainText, sources } = useMemo(() => {
-    const text = message.content ?? "";
-    const start = text.indexOf("[SOURCES_START]");
-    const end = text.indexOf("[SOURCES_END]");
-
-    if (start === -1 || end === -1 || end <= start) {
-      return { mainText: text, sources: [] as Source[] };
-    }
-
-    const before = text.slice(0, start).trimEnd();
-    const block = text.slice(start + "[SOURCES_START]".length, end).trim();
-    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
-
-    const parsed = lines.map((line) => {
-      // idx|date|headline|url|similarity|passage_id
-      const [, date, headline, url, similarity, passageId] = line.split("|");
-      return {
-        date: date ?? "",
-        headline: headline ?? "",
-        url: (url ?? "").replace("%7C", "|"),
-        similarity: similarity ?? "",
-        passageId: passageId ?? "",
-      };
-    });
-
-    return { mainText: before, sources: parsed };
-  }, [message.content]);
+  const { mainText, sources } = useMemo(
+    () => parseMessageSources(message.content ?? ""),
+    [message.content],
+  );
 
   const [showSources, setShowSources] = useState(false);
+
+  const hasInlineMarkers = !isUser && sources.length > 0 && /\[\d+\]/.test(mainText);
 
   return (
     <div
@@ -70,20 +100,44 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         className="text-sm leading-relaxed whitespace-pre-wrap"
         style={{ color: "var(--text-primary)" }}
       >
-        {mainText}
+        {hasInlineMarkers
+          ? renderInlineText(mainText, sources, onCitationClick)
+          : mainText}
       </p>
 
       {!isUser && sources.length > 0 && (
         <div className="mt-2">
+          {/* When no inline markers, show chips in a grouped row as fallback */}
+          {!hasInlineMarkers && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className="text-[10px] uppercase tracking-wider mr-1"
+                style={{ color: "var(--text-tertiary)" }}
+              >
+                Sources
+              </span>
+              {sources.map((s, i) => (
+                <CitationChip
+                  key={`chip-${s.passageId || i}`}
+                  index={i + 1}
+                  source={s}
+                  onCitationClick={onCitationClick}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Expand/collapse toggle */}
           <button
             type="button"
             onClick={() => setShowSources((v) => !v)}
-            className="text-xs underline transition-opacity hover:opacity-70"
-            style={{ color: "var(--text-secondary)" }}
+            className="mt-1 text-[10px] transition-opacity hover:opacity-70"
+            style={{ color: "var(--text-tertiary)" }}
           >
-            {showSources ? "Hide sources" : `Show sources (${sources.length})`}
+            {showSources ? "hide sources" : "show sources"}
           </button>
 
+          {/* Expandable detail list */}
           {showSources && (
             <div className="mt-2 space-y-2">
               {sources.map((s, i) => (
@@ -93,6 +147,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                   style={{ color: "var(--text-secondary)" }}
                 >
                   <div>
+                    <span
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[8px] font-bold mr-1"
+                      style={{
+                        backgroundColor: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                        color: "var(--accent)",
+                      }}
+                    >
+                      {i + 1}
+                    </span>
                     <span style={{ color: "var(--text-tertiary)" }}>{s.date}</span>{" "}
                     {s.similarity ? (
                       <span style={{ color: "var(--text-tertiary)" }}>

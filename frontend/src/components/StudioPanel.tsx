@@ -1,29 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { MoatAssessment } from "@/lib/moatTutorApi";
 import { StudioCard } from "@/components/studio/StudioCard";
 import { StudioCardExpanded } from "@/components/studio/StudioCardExpanded";
 import { PriceChartView } from "@/components/studio/views/PriceChartView";
-import { MoatRadarView } from "@/components/studio/views/MoatRadarView";
 import { OverallMoatView } from "@/components/studio/views/OverallMoatView";
 
 type StudioPanelProps = {
   ticker?: string | null;
   startDate?: string | null;
   endDate?: string | null;
-  moatAssessment?: MoatAssessment | null;
   startYear?: number;
   endYear?: number;
 };
 
-type CardId = "price-chart" | "moat-radar" | "overall-moat" | "news-timeline";
+type CardId = "price-chart" | "overall-moat";
 
 export function StudioPanel({
   ticker,
   startDate,
   endDate,
-  moatAssessment,
   startYear,
   endYear,
 }: StudioPanelProps) {
@@ -102,40 +98,34 @@ export function StudioPanel({
           </StudioCardExpanded>
         )}
 
-        {/* Moat Radar Card */}
+        {/* Index Cards — placeholder */}
         <StudioCard
-          id="moat-radar"
-          title="Moat Analysis"
-          description="Competitive moat characteristics from recent conversation"
+          id="index-cards"
+          title="Index Cards"
+          description="Benchmark and ETF index context beside your company view. Coming soon."
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 2v20M2 12h20" />
-              <path d="M6.34 6.34l11.32 11.32M17.66 6.34L6.34 17.66" />
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
             </svg>
           }
-          available={!!moatAssessment}
-          onClick={() => handleCardClick("moat-radar")}
-          isExpanded={expandedCard === "moat-radar"}
-          isLoading={loadingCard === "moat-radar"}
+          available={false}
+          onClick={() => {}}
+          isExpanded={false}
+          isLoading={false}
         />
-        {expandedCard === "moat-radar" && (
-          <StudioCardExpanded onCollapse={() => setExpandedCard(null)}>
-            <MoatRadarView moatAssessment={moatAssessment} />
-          </StudioCardExpanded>
-        )}
 
-        {/* News Timeline Card - Placeholder */}
+        {/* Milestone tracking — placeholder */}
         <StudioCard
-          id="news-timeline"
-          title="News Timeline"
-          description="Key events and news correlation (coming soon)"
+          id="milestone-tracking"
+          title="Milestone Tracking"
+          description="Moat-relevant events and milestones over your selected period. Next feature."
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
+              <line x1="5" y1="22" x2="5" y2="4" />
+              <path d="M5 4h14l-4 5 4 5H5V4z" strokeLinejoin="round" />
             </svg>
           }
           available={false}
