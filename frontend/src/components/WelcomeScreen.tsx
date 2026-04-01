@@ -4,6 +4,7 @@ import { ChatInput } from "@/components/chat";
 import { CompanySelector } from "@/components/CompanySelector";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { ExamplePrompts } from "@/components/ExamplePrompts";
+import { ModeToggle } from "@/components/ModeToggle";
 
 type WelcomeScreenProps = {
   inputValue: string;
@@ -48,6 +49,11 @@ export function WelcomeScreen({
       >
         Select a company and analyze its Moat development.
       </p>
+
+      {/* Mode selector -- choose Analyst or Tutor before the first message */}
+      <div className="mt-5">
+        <ModeToggle />
+      </div>
 
       <div className="mt-6 w-full max-w-2xl mx-auto">
         <ExamplePrompts

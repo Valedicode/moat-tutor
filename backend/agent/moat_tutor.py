@@ -503,6 +503,53 @@ For ROIC-related questions, default to 10 years unless the user specifies otherw
 Help the user understand economic moat dynamics through data and reasoning. Teach through causal chains and clear explanations. Adapt to what the user needs -- sometimes that is a full analysis, sometimes it is a single number with context.
 """
 
+# Appended to SYSTEM_PROMPT when the user selects Tutor Mode.
+TUTOR_SUPPLEMENT = """
+
+## TUTOR MODE OVERRIDE (ACTIVE)
+
+You are now in Tutor Mode. Your persona shifts from analyst to **Cognitive Mirror**.
+Your job is NOT to deliver answers -- it is to help the student discover them.
+
+### Persona: Cognitive Mirror
+- Reflect the student's current knowledge state back to them.
+- Surface gaps and contradictions in their reasoning rather than filling them in.
+- Validate correct intuitions explicitly before probing deeper.
+
+### Socratic Cadence (MANDATORY)
+- Approximately 70% of your output should be questions; 30% can be framing,
+  hints, or partial context.
+- Every response MUST end with 1-3 follow-up questions that guide the student
+  toward the next insight.
+- Prefer "What do you think happens when..." over "What happens when..."
+  to engage the student's own reasoning.
+
+### Direct Answer Prohibition (STRICT)
+- You MUST NOT reveal final moat ratings (Wide, Narrow, None).
+- You MUST NOT state explicit ROIC-vs-WACC verdicts ("the moat is proven").
+- When the student asks for a rating or verdict, redirect:
+  "I can't reveal the rating yet. Based on the data we've looked at,
+   what structural barriers do you see that could protect excess returns?"
+- You MAY present raw data (ROIC numbers, price, news) -- the student
+  must interpret it.
+
+### Structured Teaching Output
+After your Socratic response, include these sections when relevant:
+
+**Comprehension Check:**
+- 1-3 questions testing whether the student grasped the current concept.
+
+**Next Steps:**
+- 1-2 suggestions for what the student could explore next.
+
+### What NOT to Change
+- You still have access to all tools. Call them as needed to gather data.
+- You still follow Time Window Guidelines.
+- You still produce hidden [MOAT_ASSESSMENT_START]...[MOAT_ASSESSMENT_END]
+  JSON for the backend when doing full analysis -- but NEVER surface its
+  contents to the student.
+"""
+
 
 # ============================================================================
 # Agent Tools
@@ -1576,8 +1623,13 @@ def get_llm() -> ChatOpenAI:
 # Agent Setup
 # ============================================================================
 
-def create_moat_agent():
-    """Create and return the MoatTutor agent with tools."""
+def create_moat_agent(mode: str = "analyst"):
+    """Create and return the MoatTutor agent with tools.
+
+    Args:
+        mode: Interaction mode -- "analyst" for direct answers,
+              "tutor" for Socratic engagement.
+    """
     
     # Define tools list
     tools = [
@@ -1601,6 +1653,11 @@ def create_moat_agent():
         get_etf_tech_sector_holdings,   # MOAT ETF technology sector holdings
     ]
     
+    # Conditionally compose the system prompt
+    prompt = SYSTEM_PROMPT
+    if mode == "tutor":
+        prompt += TUTOR_SUPPLEMENT
+    
     # Create LLM
     llm = get_llm()
     
@@ -1608,7 +1665,7 @@ def create_moat_agent():
     agent = create_agent(
         model=llm,
         tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=prompt,
     )
     
     return agent
@@ -1618,7 +1675,7 @@ def create_moat_agent():
 # Agent Invocation Helper
 # ============================================================================
 
-def invoke_agent(query: str, conversation_history: list[dict] = None) -> str:
+def invoke_agent(query: str, conversation_history: list[dict] = None, mode: str = "analyst") -> str:
     """
     Invoke the MoatTutor agent with a natural language query.
     
@@ -1629,6 +1686,7 @@ def invoke_agent(query: str, conversation_history: list[dict] = None) -> str:
         query: Natural language query from the user
         conversation_history: Optional list of previous messages in format
                             [{"role": "user/assistant", "content": "..."}]
+        mode: Interaction mode -- "analyst" or "tutor"
     
     Returns:
         The agent's response as a string (tool calls are filtered out)
@@ -1638,7 +1696,7 @@ def invoke_agent(query: str, conversation_history: list[dict] = None) -> str:
         - "What are Microsoft's moat characteristics?"
         - "Get news for GOOGL in March 2023"
     """
-    agent = create_moat_agent()
+    agent = create_moat_agent(mode=mode)
     
     # Build message list with conversation history
     messages = []
@@ -1668,7 +1726,8 @@ def invoke_agent_windowed(
     window_end: str,
     window_duration: float,
     output_mode: str,
-    conversation_history: list[dict] = None
+    conversation_history: list[dict] = None,
+    mode: str = "analyst",
 ) -> str:
     """
     Invoke the MoatTutor agent with explicit time window policy enforcement.
@@ -1683,6 +1742,7 @@ def invoke_agent_windowed(
         window_duration: Window duration in years
         output_mode: One of "rating", "direction", or "signals"
         conversation_history: Optional conversation history
+        mode: Interaction mode -- "analyst" or "tutor"
     
     Returns:
         The agent's response as a string
@@ -1704,10 +1764,10 @@ def invoke_agent_windowed(
 User Query: {query}
 """
     
-    return invoke_agent(window_context, conversation_history)
+    return invoke_agent(window_context, conversation_history, mode=mode)
 
 
-def stream_agent_messages(query: str, conversation_history: list[dict] = None):
+def stream_agent_messages(query: str, conversation_history: list[dict] = None, mode: str = "analyst"):
     """
     Stream token/message chunks from the agent using LangChain streaming.
 
@@ -1715,11 +1775,12 @@ def stream_agent_messages(query: str, conversation_history: list[dict] = None):
         query: User's question or request
         conversation_history: Optional list of previous messages in format
                             [{"role": "user/assistant", "content": "..."}]
+        mode: Interaction mode -- "analyst" or "tutor"
 
     Yields (token, metadata) tuples as produced by agent.stream/agent.astream
     with stream_mode="messages".
     """
-    agent = create_moat_agent()
+    agent = create_moat_agent(mode=mode)
     
     # Build message list with conversation history
     messages = []

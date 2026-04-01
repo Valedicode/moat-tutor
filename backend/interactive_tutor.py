@@ -2,47 +2,54 @@
 Interactive MoatTutor Agent - Terminal Mode
 
 Run conversational sessions with the MoatTutor agent for local testing.
-Perfect for testing tutoring features, learning paths, and comprehension checks.
+
+Supports two interaction modes:
+  --mode analyst   Direct answers (default)
+  --mode tutor     Socratic engagement with comprehension checks
 """
 
 import sys
 from agent.moat_tutor import create_moat_agent
 
 
-def run_interactive_tutor(initial_input: str = None):
+def run_interactive_tutor(initial_input: str = None, mode: str = "analyst"):
     """
     Run MoatTutor with interactive user conversation via terminal.
     
     The agent can:
     1. Explain stock movements using the MOAT framework
-    2. Teach financial concepts
-    3. Offer learning paths (Beginner, Analyst, Event-Chain, etc.)
-    4. Answer comprehension check questions
-    5. Provide quizzes and comparisons
+    2. Teach financial concepts with clear causal reasoning
+    3. Compare companies and identify moat sources
+    
+    In Tutor Mode (--mode tutor) the agent additionally:
+    - Uses Socratic questioning instead of direct answers
+    - Withholds final moat ratings for the student to derive
+    - Produces comprehension checks and next-step suggestions
     
     Args:
         initial_input: Optional starting query
+        mode: "analyst" or "tutor"
     """
+    mode_label = "Tutor" if mode == "tutor" else "Analyst"
     print("=" * 80)
-    print("MOATTUTOR - Interactive Tutoring Mode")
+    print(f"MOATTUTOR - Interactive Mode ({mode_label})")
     print("=" * 80)
-    print("\nI'm your financial tutor! I can help you understand stock movements")
-    print("using the MOAT framework while teaching you financial concepts.")
+    print("\nI can help you understand stock movements using the MOAT framework.")
+    if mode == "tutor":
+        print("Tutor Mode is active -- I'll guide you with questions instead of answers.")
     print("\nExamples:")
     print("  - 'Explain why AAPL moved from 2023-01-01 to 2023-02-28'")
     print("  - 'What are network effects?'")
-    print("  - 'Give me the Beginner-Friendly explanation'")
-    print("  - 'Quiz me on moat concepts'")
     print("  - 'Compare AAPL and MSFT moats'")
     print("\nType 'quit', 'exit', or 'q' to exit at any time.")
     print("=" * 80)
     print()
     
     # Create agent once
-    print("🔧 Initializing MoatTutor agent...")
+    print(f"Initializing MoatTutor agent ({mode_label} mode)...")
     try:
-        agent = create_moat_agent()
-        print("✅ Agent ready!\n")
+        agent = create_moat_agent(mode=mode)
+        print("Agent ready!\n")
     except Exception as e:
         print(f"❌ Failed to initialize agent: {e}")
         print("Make sure you have:")
@@ -133,29 +140,19 @@ def print_help():
     print("MOATTUTOR - Interactive Mode Help")
     print("="*80)
     print("\nUsage:")
-    print("  python interactive_tutor.py                    # Start interactive session")
-    print("  python interactive_tutor.py 'Your question'    # Start with a question")
+    print("  python interactive_tutor.py                          # Analyst mode (default)")
+    print("  python interactive_tutor.py --mode tutor             # Tutor (Socratic) mode")
+    print("  python interactive_tutor.py 'Your question'          # Start with a question")
+    print("  python interactive_tutor.py --mode tutor 'Question'  # Tutor + initial query")
+    print("\nModes:")
+    print("  analyst  Direct answers with clear explanations (default)")
+    print("  tutor    Socratic engagement -- the agent asks questions instead of")
+    print("           giving answers, withholds moat ratings, and produces")
+    print("           comprehension checks so you learn by reasoning.")
     print("\nExample Questions:")
     print("  - Explain why AAPL moved from 2023-01-01 to 2023-02-28")
     print("  - What are network effects in simple terms?")
-    print("  - Give me the Beginner-Friendly explanation")
-    print("  - I want the Moat Deep Dive")
-    print("  - Quiz me on the concepts we just covered")
     print("  - Compare Apple and Microsoft's moats")
-    print("\nLearning Paths (you can request these):")
-    print("  1. Beginner-Friendly - Simple analogies and everyday examples")
-    print("  2. Professional Analyst - Technical financial terminology")
-    print("  3. Event → Price Chain - Causal links between news and price")
-    print("  4. Moat Deep Dive - Detailed competitive advantage analysis")
-    print("  5. Visual Timeline - Chronological walkthrough")
-    print("  6. Raw Data View - Original headlines and numbers")
-    print("\nThe agent will:")
-    print("  ✓ Explain stock movements using the MOAT framework")
-    print("  ✓ Define every financial concept it uses")
-    print("  ✓ Offer 6 learning paths after each explanation")
-    print("  ✓ Ask comprehension check questions")
-    print("  ✓ Suggest next steps for active learning")
-    print("  ✓ Adapt language to your expertise level")
     print("\nTips:")
     print("  - Say 'beginner' or 'simple' for easier explanations")
     print("  - Say 'analyst view' or 'technical' for advanced explanations")
@@ -165,28 +162,37 @@ def print_help():
 
 # CLI for testing
 if __name__ == "__main__":
-    print("\n" + "="*80)
-    print("🎓 MOATTUTOR - Your Interactive Financial Tutor")
-    print("="*80 + "\n")
-    
-    # Check for help flag
-    if len(sys.argv) > 1 and sys.argv[1] in ['-h', '--help', 'help']:
-        print_help()
-        sys.exit(0)
-    
-    # Get initial input from command line or prompt user
-    if len(sys.argv) > 1:
-        initial_input = " ".join(sys.argv[1:])
-    else:
-        initial_input = None
-    
-    # Run interactive tutor
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="MoatTutor Interactive CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["analyst", "tutor"],
+        default="analyst",
+        help="Interaction mode (default: analyst)",
+    )
+    parser.add_argument(
+        "query",
+        nargs="*",
+        help="Optional initial question",
+    )
+    args = parser.parse_args()
+
+    initial_input = " ".join(args.query) if args.query else None
+
+    print("\n" + "=" * 80)
+    print("MOATTUTOR - Your Interactive Financial Tutor")
+    print("=" * 80 + "\n")
+
     try:
-        run_interactive_tutor(initial_input)
+        run_interactive_tutor(initial_input, mode=args.mode)
     except KeyboardInterrupt:
-        print("\n\n👋 Interrupted by user. Thanks for learning with MoatTutor!")
+        print("\n\nInterrupted by user. Thanks for learning with MoatTutor!")
     except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
+        print(f"\nUnexpected error: {e}")
         print("\nTroubleshooting:")
         print("  1. Check that .env file exists with OPENAI_API_KEY")
         print("  2. Verify requirements are installed: pip install -r requirements.txt")

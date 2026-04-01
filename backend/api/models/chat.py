@@ -36,6 +36,10 @@ class ChatRequest(BaseModel):
     ticker: Optional[str] = Field(None, description="Optional stock ticker for context (e.g., AAPL)")
     start_date: Optional[str] = Field(None, description="Optional start date for analysis (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="Optional end date for analysis (YYYY-MM-DD)")
+    mode: Optional[Literal["analyst", "tutor"]] = Field(
+        "analyst",
+        description="Interaction mode: 'analyst' for direct answers, 'tutor' for Socratic engagement"
+    )
     
     class Config:
         json_schema_extra = {
@@ -44,7 +48,8 @@ class ChatRequest(BaseModel):
                 "session_id": "session-123",
                 "ticker": "AAPL",
                 "start_date": "2022-01-01",
-                "end_date": "2023-12-31"
+                "end_date": "2023-12-31",
+                "mode": "analyst"
             }
         }
 
@@ -82,6 +87,10 @@ class SessionInfo(BaseModel):
     messages: List[ChatMessage] = Field(default_factory=list, description="Messages in this session")
     created_at: str = Field(..., description="Session creation timestamp")
     last_activity: str = Field(..., description="Last activity timestamp")
+    mode: Optional[Literal["analyst", "tutor"]] = Field(
+        "analyst",
+        description="Interaction mode for this session"
+    )
     
     class Config:
         json_schema_extra = {
@@ -89,7 +98,8 @@ class SessionInfo(BaseModel):
                 "session_id": "session-123",
                 "messages": [],
                 "created_at": "2025-12-10T15:00:00Z",
-                "last_activity": "2025-12-10T15:30:00Z"
+                "last_activity": "2025-12-10T15:30:00Z",
+                "mode": "analyst"
             }
         }
 

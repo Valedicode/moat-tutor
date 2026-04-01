@@ -9,6 +9,7 @@ import { CompanySelectorCompact } from "@/components/CompanySelectorCompact";
 import { DateRangePickerCompact } from "@/components/DateRangePickerCompact";
 import { NewsSourcesBox, type NewsMode } from "@/components/sources/NewsSourcesBox";
 import { parseMessageSources } from "@/utils/sourceParsing";
+import { ModeToggle } from "@/components/ModeToggle";
 
 type ThreeColumnLayoutProps = {
   messages: Message[];
@@ -26,6 +27,7 @@ type ThreeColumnLayoutProps = {
   endYear: number;
   onStartYearChange: (year: number) => void;
   onEndYearChange: (year: number) => void;
+  isSending?: boolean;
 };
 
 export function ThreeColumnLayout({
@@ -44,6 +46,7 @@ export function ThreeColumnLayout({
   endYear,
   onStartYearChange,
   onEndYearChange,
+  isSending,
 }: ThreeColumnLayoutProps) {
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
@@ -275,6 +278,9 @@ export function ThreeColumnLayout({
                 AI Research Chat
               </h2>
             </div>
+
+            {/* Analyst / Tutor Mode Toggle -- locked while generating */}
+            <ModeToggle disabled={!!isSending} />
 
             {/* Right Panel Toggle */}
             <button

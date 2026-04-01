@@ -153,6 +153,7 @@ export async function chat(params: {
   ticker?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  mode?: "analyst" | "tutor";
   signal?: AbortSignal;
 }): Promise<ChatResponse> {
   try {
@@ -165,6 +166,7 @@ export async function chat(params: {
         ticker: params.ticker ?? undefined,
         start_date: params.startDate ?? undefined,
         end_date: params.endDate ?? undefined,
+        mode: params.mode ?? undefined,
       }),
       signal: params.signal,
     });
@@ -204,6 +206,7 @@ export async function chatStream(params: {
   ticker?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  mode?: "analyst" | "tutor";
   onEvent: (evt: StreamEvent) => void;
   signal?: AbortSignal;
 }): Promise<void> {
@@ -217,6 +220,7 @@ export async function chatStream(params: {
       ticker: params.ticker ?? undefined,
       start_date: params.startDate ?? undefined,
       end_date: params.endDate ?? undefined,
+      mode: params.mode ?? undefined,
     }),
     signal: params.signal,
   });
