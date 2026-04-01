@@ -2,6 +2,7 @@
 Chat endpoints for MoatTutor agent interaction.
 """
 
+import re
 import uuid
 import os
 import asyncio
@@ -19,6 +20,25 @@ from services.parser import AgentResponseParser
 from services.session_store import SessionStore, get_session_store
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+
+# ---------------------------------------------------------------------------
+# Rating-leak guard (tutor mode safety net)
+# ---------------------------------------------------------------------------
+_RATING_LEAK_RE = re.compile(
+    r"\b(?:Overall\s+(?:Assessment|Rating)\s*:\s*)?"
+    r"(Wide|Narrow|No)\s+Moat\b",
+    re.IGNORECASE,
+)
+_RATING_REDIRECT = (
+    "I can't reveal the rating yet. "
+    "Based on the evidence we've discussed, what moat classification "
+    "do *you* think fits -- and why?"
+)
+
+def _scrub_rating_leaks(text: str) -> str:
+    """Replace any leaked moat ratings with a Socratic redirect."""
+    return _RATING_LEAK_RE.sub(_RATING_REDIRECT, text)
+
 
 # Maximum number of messages to include in conversation history
 # Prevents unbounded context growth; keeps most recent exchanges
@@ -123,8 +143,15 @@ async def chat(
             request.query, request.ticker, request.start_date, request.end_date
         )
         
-        # Invoke agent with conversation history
-        agent_response = invoke_agent(enhanced_query, conversation_history)
+        # Resolve mode (default to analyst)
+        mode = request.mode or "analyst"
+
+        # Invoke agent with conversation history and mode
+        agent_response = invoke_agent(enhanced_query, conversation_history, mode=mode)
+
+        # In tutor mode, scrub any leaked ratings as a safety net
+        if mode == "tutor":
+            agent_response = _scrub_rating_leaks(agent_response)
         
         # Try to parse the response into structured data
         parsed = None
@@ -225,29 +252,35 @@ async def chat_stream(
             enhanced_query = _build_enhanced_query(
                 request.query, request.ticker, request.start_date, request.end_date
             )
-            stream_iter = stream_agent_messages(enhanced_query, conversation_history)
+            # Resolve mode (default to analyst)
+            mode = request.mode or "analyst"
+            is_tutor = mode == "tutor"
+
+            stream_iter = stream_agent_messages(enhanced_query, conversation_history, mode=mode)
 
             # stream_agent_messages may return an async generator or a sync generator
             if hasattr(stream_iter, "__aiter__"):
                 async for token, metadata in stream_iter:
-                    # Skip tool-related messages using metadata if available
                     if _should_skip_token(token, metadata):
                         continue
                     delta = _extract_text_delta(token)
                     if not delta:
                         continue
+                    if is_tutor:
+                        delta = _scrub_rating_leaks(delta)
                     full_text_parts.append(delta)
                     yield _sse("delta", {"delta": delta})
                     if STREAM_TOKEN_DELAY_SEC > 0:
                         await asyncio.sleep(STREAM_TOKEN_DELAY_SEC)
             else:
                 for token, metadata in stream_iter:
-                    # Skip tool-related messages using metadata if available
                     if _should_skip_token(token, metadata):
                         continue
                     delta = _extract_text_delta(token)
                     if not delta:
                         continue
+                    if is_tutor:
+                        delta = _scrub_rating_leaks(delta)
                     full_text_parts.append(delta)
                     yield _sse("delta", {"delta": delta})
                     if STREAM_TOKEN_DELAY_SEC > 0:
