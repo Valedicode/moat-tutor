@@ -166,6 +166,8 @@ The frontend will be available at `http://localhost:3000`.
 
 ## Contributors
 
+This project was developed as part of a **research-focused course** at **RWTH Aachen University**, in the **i5** group.
+
 MoatTutor was developed by **[Kevin Ha](https://github.com/Valedicode)**, with supervision from **Er Jin**, **Yixin Peng**, and **Prof. Stefan Decker**.
 
 ---
