@@ -1,6 +1,28 @@
-## MoatTutor
+# MoatTutor
 
-### Overview
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-1.x-121212?logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.x-1C3C3C)](https://github.com/langchain-ai/langgraph)
+
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![pnpm](https://img.shields.io/badge/pnpm-frontend%20package%20manager-f6921e?logo=pnpm&logoColor=white)](https://pnpm.io/)
+
+[![Forks](https://img.shields.io/github/forks/Valedicode/moat-tutor?style=social)](https://github.com/Valedicode/moat-tutor/network/members)
+[![Stars](https://img.shields.io/github/stars/Valedicode/moat-tutor?style=social)](https://github.com/Valedicode/moat-tutor/stargazers)
+[![Contributors](https://img.shields.io/github/contributors/Valedicode/moat-tutor)](https://github.com/Valedicode/moat-tutor/graphs/contributors)
+
+[![Issues](https://img.shields.io/github/issues/Valedicode/moat-tutor)](https://github.com/Valedicode/moat-tutor/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/Valedicode/moat-tutor)](https://github.com/Valedicode/moat-tutor/commits/main)
+[![Pull Requests](https://img.shields.io/github/issues-pr/Valedicode/moat-tutor)](https://github.com/Valedicode/moat-tutor/pulls)
+
+---
+
+## Overview
 
 MoatTutor is an LLM-powered agent that explains the historical behavior of **MOAT-style technology stocks** in clear, non-technical language.
 Instead of predicting prices, it focuses on **explainability**: connecting financial news, fundamentals, and price movements to long-term **economic moats** (durable competitive advantages such as network effects or switching costs).
@@ -16,7 +38,7 @@ The goal is to help non-finance users understand why a stock might have moved th
 
 ---
 
-### Features
+## Features
 
 - **Plain-language explanations** of key concepts like switching costs, network effects, and intangible assets.
 - **Narratives linking events to price moves**, e.g., how specific news or fundamental changes relate to later rallies or drawdowns.
@@ -25,15 +47,16 @@ The goal is to help non-finance users understand why a stock might have moved th
 
 ---
 
-### Tech Stack
+## Tech Stack
 
-- **Agent & orchestration**: `LangChain` (with potential `LangGraph` for more complex, graph-based workflows).
-- **Backend API**: `FastAPI` for serving the agent and data endpoints.
-- **Frontend**: `Next.js` for a web UI to explore explanations and visualizations.
+- **Languages**: **Python** (3.10+) for the backend and agent; **TypeScript** for the Next.js app.
+- **Agent & orchestration**: **LangChain** and **LangGraph** for LLM calls, tools, and graph-style workflows.
+- **Backend API**: **FastAPI** (with **Uvicorn**) for serving the agent and data endpoints.
+- **Frontend**: **Next.js** and **React** for the web UI; **Tailwind CSS** for styling; **Recharts** for charts. **pnpm** is the package manager for the Next.js app (`pnpm install` / `pnpm dev`).
 
 ---
 
-### High-Level Architecture
+## High-Level Architecture
 
 - **Data Layer**
   - Curated dataset of:
@@ -66,7 +89,7 @@ The goal is to help non-finance users understand why a stock might have moved th
 
 ---
 
-### Data Inputs
+## Data Inputs
 
 - **Historical News Data (FNSPID)**
   - 142,287 curated news passages from 2015-2023
@@ -89,22 +112,22 @@ The goal is to help non-finance users understand why a stock might have moved th
 
 ---
 
-### Getting Started
+## Getting Started
 
-#### Prerequisites
+### Prerequisites
 
 - Python 3.10+ for the `FastAPI` backend and LangChain/LangGraph agent.
 - Node.js 18+ for the `Next.js` frontend.
 - Access to an LLM API (e.g., OpenAI API key).
 
-#### 1. Clone the repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Valedicode/moat-tutor.git
 cd moat-tutor
 ```
 
-#### 2. Backend setup (FastAPI + LangChain)
+### 2. Backend setup (FastAPI + LangChain)
 
 ```bash
 cd backend
@@ -121,7 +144,7 @@ OPENAI_MODEL=gpt-4o-mini
 LLM_STREAMING=true
 ```
 
-##### 2. Start the backend server
+#### Start the backend server
 
 ```bash
 uvicorn main:app --reload --port 8000
@@ -129,7 +152,7 @@ uvicorn main:app --reload --port 8000
 
 The API will be available at `http://localhost:8000`.
 
-#### 3. Frontend setup (Next.js)
+### 3. Frontend setup (Next.js)
 
 ```bash
 cd frontend
@@ -138,3 +161,11 @@ pnpm dev
 ```
 
 The frontend will be available at `http://localhost:3000`.
+
+---
+
+## Contributors
+
+MoatTutor was developed by **[Kevin Ha](https://github.com/Valedicode)**, with supervision from **Er Jin**, **Yixin Peng**, and **Prof. Stefan Decker**.
+
+---
